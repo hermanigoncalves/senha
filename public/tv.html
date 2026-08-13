@@ -29,59 +29,6 @@ body {
  position: relative;
 }
 
-/* Modal Otimizado para Controle Remoto da TV Box (Botão OK) */
-.modal-controle-tv {
- position: fixed;
- top: 0;
- left: 0;
- right: 0;
- bottom: 0;
- background: rgba(3, 7, 18, 0.95);
- z-index: 999999;
- display: flex;
- flex-direction: column;
- align-items: center;
- justify-content: center;
- padding: 30px;
- backdrop-filter: blur(15px);
-}
-
-.btn-tv-ok {
- background: linear-gradient(135deg, #10b981, #059669);
- color: #ffffff;
- font-size: 32px;
- font-weight: 900;
- padding: 25px 45px;
- border: 4px solid #34d399;
- border-radius: 20px;
- cursor: pointer;
- box-shadow: 0 0 50px rgba(16, 185, 129, 0.6);
- outline: none;
- transition: all 0.2s ease;
- animation: pulseBtn 1.5s infinite alternate;
- text-transform: uppercase;
- letter-spacing: 2px;
-}
-
-.btn-tv-ok:focus, .btn-tv-ok:hover {
- transform: scale(1.08);
- background: linear-gradient(135deg, #34d399, #10b981);
- border-color: #ffffff;
- box-shadow: 0 0 80px rgba(52, 211, 153, 0.9);
-}
-
-@keyframes pulseBtn {
- from { transform: scale(1); box-shadow: 0 0 40px rgba(16, 185, 129, 0.5); }
- to { transform: scale(1.04); box-shadow: 0 0 70px rgba(16, 185, 129, 0.8); }
-}
-
-.subtitulo-modal {
- color: #9ca3af;
- font-size: 20px;
- margin-top: 20px;
- font-weight: 500;
-}
-
 .header-status {
  position: fixed;
  top: 20px;
@@ -199,18 +146,8 @@ h3 {
 </head>
 <body>
 
-<!-- Elementos Fixos no DOM para Desbloqueio de Mídia no Android TV / Roku WebView -->
-<audio id="playerAudio" preload="auto" crossorigin="anonymous"></audio>
-
-<!-- Modal Otimizado para Controle Remoto de TV Box (Botão OK) -->
-<div id="modalControleTv" class="modal-controle-tv">
- <button id="btnAtivarTv" class="btn-tv-ok" autofocus onclick="desbloquearComControle()">
-  🆗 PRESSIONE 'OK' NO CONTROLE PARA ATIVAR A TV
- </button>
- <div class="subtitulo-modal">
-  Requisito do Android TV / Roku para liberar a reprodução de som
- </div>
-</div>
+<!-- Canal de Mídia Silencioso de Inicialização Automática no DOM (Zero-Clique) -->
+<audio id="playerAudio" autoplay loop muted playsinline src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA" crossorigin="anonymous"></audio>
 
 <div class="header-status">
  <div class="status-dot" id="statusDot"></div>
@@ -236,14 +173,13 @@ AGUARDANDO
 </div>
 
 <div class="diag-audio" id="diagAudio">
- Áudio: Pressione OK no controle remoto...
+ Áudio: Modo Automático (Zero-Clique)
 </div>
 
 <script>
 
 let audioCtx = null;
 let vozesDisponiveis = [];
-let audioDesbloqueado = false;
 let ultimaChamadaChaveTocada = null;
 let pacienteAtualDados = null;
 
@@ -272,67 +208,25 @@ function obterOuCriarAudioContext() {
  return audioCtx;
 }
 
-function desbloquearComControle() {
+function autoDesbloquearZeroClique() {
  const ctx = obterOuCriarAudioContext();
- if (ctx.state === 'suspended') {
+ if (ctx && ctx.state === 'suspended') {
   ctx.resume().catch(() => {});
  }
-
- // Desbloqueia permanentemente o tag <audio> estatico do DOM no Android WebView
- playerAudio.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
- playerAudio.play().then(() => {
-  audioDesbloqueado = true;
-  localStorage.setItem('cmip_tv_audio_unlocked', 'true');
-  ocultarModalControle();
-  atualizarDiag('🟢 Liberado via controle (OK)!');
-  
-  tocarDingDong();
-  
-  if (pacienteAtualDados && pacienteAtualDados.senha) {
-   executarChamadaSonora(pacienteAtualDados.senha, pacienteAtualDados.nome, pacienteAtualDados.guiche, true);
-  }
- }).catch(err => {
-  audioDesbloqueado = true;
-  ocultarModalControle();
-  atualizarDiag('🟢 Liberado (Tentativa OK)');
-  tocarDingDong();
-  if (pacienteAtualDados && pacienteAtualDados.senha) {
-   executarChamadaSonora(pacienteAtualDados.senha, pacienteAtualDados.nome, pacienteAtualDados.guiche, true);
-  }
- });
-
+ 
+ if (playerAudio) {
+  playerAudio.muted = false;
+  playerAudio.play().catch(() => {});
+ }
+ 
  if (window.speechSynthesis) {
   window.speechSynthesis.resume();
  }
 }
 
-function ocultarModalControle() {
- const m = document.getElementById('modalControleTv');
- if (m) m.style.display = 'none';
-}
-
-function exibirModalControle() {
- const m = document.getElementById('modalControleTv');
- if (m && !audioDesbloqueado) {
-  m.style.display = 'flex';
-  const btn = document.getElementById('btnAtivarTv');
-  if (btn) btn.focus();
- }
-}
-
-// Ouvintes globais para qualquer tecla do controle remoto (OK, ENTER, D-Pad)
-window.addEventListener('keydown', (e) => {
- if (!audioDesbloqueado) {
-  desbloquearComControle();
- }
-});
-
-['click', 'touchstart', 'pointerdown'].forEach(evt => {
- window.addEventListener(evt, () => {
-  if (!audioDesbloqueado) {
-   desbloquearComControle();
-  }
- }, { passive: true });
+// Ouvintes globais transparentes
+['DOMContentLoaded', 'load', 'focus', 'click', 'touchstart', 'pointerdown', 'keydown'].forEach(evt => {
+ window.addEventListener(evt, autoDesbloquearZeroClique, { passive: true });
 });
 
 function tocarDingDong() {
@@ -381,17 +275,14 @@ function executarChamadaSonora(senha, nome, guiche, forcarRepeticao = false) {
   return;
  }
 
- const ctx = obterOuCriarAudioContext();
- if (ctx && ctx.state === 'suspended') {
-  ctx.resume().catch(() => {});
- }
+ autoDesbloquearZeroClique();
 
  const texto = `Atenção. Senha ${senha}. Paciente ${nome}. Dirigir-se ao guichê ${guiche}`;
 
  // 1. Bipe Ding Dong
  tocarDingDong();
 
- // 2. Voz MP3 reutilizando a tag <audio> pré-desbloqueada no Android WebView
+ // 2. Voz MP3 no canal de áudio pré-desbloqueado
  setTimeout(() => {
   falarTexto(texto, () => {
    ultimaChamadaChaveTocada = chaveAtual;
@@ -422,26 +313,29 @@ function falarTexto(texto, callbackSucesso) {
 
  playerAudio.onended = () => {
   clearTimeout(timerSeguranca);
-  atualizarDiag('✅ Reprodução MP3 concluída!');
+  atualizarDiag('✅ Reprodução concluída');
   if (callbackSucesso) callbackSucesso();
  };
 
- // Reutiliza a tag <audio id="playerAudio"> já pré-desbloqueada!
+ playerAudio.muted = false;
  playerAudio.src = urlTts;
- playerAudio.play().then(() => {
-  clearTimeout(timerSeguranca);
-  console.log('✅ Áudio MP3 reproduzido com sucesso no tag DOM!');
-  atualizarDiag('✅ Reproduzindo MP3 no Android TV...');
- }).catch(err => {
-  console.warn('Falha no playerAudio.play():', err);
-  acionarFallback('Erro no playerAudio: ' + err.message);
- });
+ const p = playerAudio.play();
+ if (p !== undefined) {
+  p.then(() => {
+   clearTimeout(timerSeguranca);
+   atualizarDiag('✅ Reproduzindo chamada...');
+   if (callbackSucesso) callbackSucesso();
+  }).catch(err => {
+   console.warn('Bloqueio no playerAudio.play():', err);
+   acionarFallback('Autoplay bloqueado: ' + err.message);
+  });
+ }
 }
 
 function sintetizarWebSpeech(texto, callbackSucesso) {
  if (!('speechSynthesis' in window)) {
-  console.error('SpeechSynthesis não suportado no Android WebView.');
-  atualizarDiag('❌ SpeechSynthesis indisponível (Usando DingDong)');
+  console.error('SpeechSynthesis não suportado neste navegador.');
+  atualizarDiag('❌ SpeechSynthesis indisponível');
   tocarDingDong();
   if (callbackSucesso) callbackSucesso();
   return;
@@ -476,13 +370,13 @@ function sintetizarWebSpeech(texto, callbackSucesso) {
 
   msg.onstart = () => {
    console.log('🔊 WebSpeech iniciado:', texto);
-   atualizarDiag('🔊 Voz WebSpeech executada');
+   atualizarDiag('🔊 Voz WebSpeech em execução');
    if (callbackSucesso) callbackSucesso();
   };
 
   msg.onerror = (e) => {
    console.error('Erro no WebSpeech:', e);
-   atualizarDiag('❌ Erro WebSpeech (Bipe duplo fallback)');
+   atualizarDiag('❌ Erro WebSpeech');
    tocarDingDong();
    if (callbackSucesso) callbackSucesso();
   };
@@ -526,6 +420,7 @@ function atualizarTelaEAudio(dados) {
 }
 
 async function checarFilaREST() {
+ autoDesbloquearZeroClique();
  try {
   const resUltima = await fetch('/api/pacientes/ultima-chamada?t=' + Date.now(), { cache: 'no-store' });
   if (resUltima.ok) {
@@ -588,16 +483,6 @@ setTimeout(() => {
   iniciarPollingREST();
  }
 }, 2500);
-
-window.addEventListener('DOMContentLoaded', () => {
- const btn = document.getElementById('btnAtivarTv');
- if (btn) btn.focus();
-
- if (localStorage.getItem('cmip_tv_audio_unlocked') === 'true') {
-  ocultarModalControle();
-  audioDesbloqueado = true;
- }
-});
 
 </script>
 

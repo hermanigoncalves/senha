@@ -29,19 +29,76 @@ body {
  position: relative;
 }
 
+/* Modal Otimizado para Controle Remoto da TV Box (Botão OK) */
+.modal-controle-tv {
+ position: fixed;
+ top: 0;
+ left: 0;
+ right: 0;
+ bottom: 0;
+ background: rgba(3, 7, 18, 0.95);
+ z-index: 999999;
+ display: flex;
+ flex-direction: column;
+ align-items: center;
+ justify-content: center;
+ padding: 30px;
+ backdrop-filter: blur(15px);
+}
+
+.btn-tv-ok {
+ background: linear-gradient(135deg, #10b981, #059669);
+ color: #ffffff;
+ font-size: 32px;
+ font-weight: 900;
+ padding: 25px 45px;
+ border: 4px solid #34d399;
+ border-radius: 20px;
+ cursor: pointer;
+ box-shadow: 0 0 50px rgba(16, 185, 129, 0.6);
+ outline: none;
+ transition: all 0.2s ease;
+ animation: pulseBtn 1.5s infinite alternate;
+ text-transform: uppercase;
+ letter-spacing: 2px;
+}
+
+.btn-tv-ok:focus, .btn-tv-ok:hover {
+ transform: scale(1.08);
+ background: linear-gradient(135deg, #34d399, #10b981);
+ border-color: #ffffff;
+ box-shadow: 0 0 80px rgba(52, 211, 153, 0.9);
+}
+
+@keyframes pulseBtn {
+ from { transform: scale(1); box-shadow: 0 0 40px rgba(16, 185, 129, 0.5); }
+ to { transform: scale(1.04); box-shadow: 0 0 70px rgba(16, 185, 129, 0.8); }
+}
+
+.subtitulo-modal {
+ color: #9ca3af;
+ font-size: 20px;
+ margin-top: 20px;
+ font-weight: 500;
+}
+
 .header-status {
  position: fixed;
- top: 15px;
+ top: 20px;
  right: 20px;
  display: flex;
  align-items: center;
- gap: 8px;
- font-size: 14px;
- color: #6b7280;
- font-weight: 500;
+ gap: 10px;
+ font-size: 13px;
+ color: #9ca3af;
+ font-weight: 600;
  letter-spacing: 1px;
  text-transform: uppercase;
- opacity: 0.7;
+ background: rgba(15, 23, 42, 0.7);
+ padding: 8px 16px;
+ border-radius: 20px;
+ border: 1px solid rgba(255, 255, 255, 0.1);
+ z-index: 100;
 }
 
 .status-dot {
@@ -50,12 +107,6 @@ body {
  background: #10b981;
  border-radius: 50%;
  box-shadow: 0 0 10px #10b981;
- animation: pulseDot 2s infinite;
-}
-
-@keyframes pulseDot {
- 0%, 100% { opacity: 1; transform: scale(1); }
- 50% { opacity: 0.4; transform: scale(0.85); }
 }
 
 .container {
@@ -70,7 +121,6 @@ body {
  backdrop-filter: blur(10px);
 }
 
-/* Efeito visual ao chamar paciente */
 .container.chamada-animada {
  animation: flashGlow 1.2s ease-in-out 3;
 }
@@ -129,14 +179,42 @@ h3 {
  font-weight: 600;
 }
 
+.diag-audio {
+ position: fixed;
+ bottom: 15px;
+ left: 20px;
+ font-size: 12px;
+ color: #9ca3af;
+ font-family: monospace;
+ background: rgba(0, 0, 0, 0.7);
+ padding: 6px 12px;
+ border-radius: 6px;
+ border: 1px solid rgba(255, 255, 255, 0.1);
+ text-align: left;
+ z-index: 100;
+}
+
 </style>
 
 </head>
 <body>
 
+<!-- Elementos Fixos no DOM para Desbloqueio de Mídia no Android TV / Roku WebView -->
+<audio id="playerAudio" preload="auto" crossorigin="anonymous"></audio>
+
+<!-- Modal Otimizado para Controle Remoto de TV Box (Botão OK) -->
+<div id="modalControleTv" class="modal-controle-tv">
+ <button id="btnAtivarTv" class="btn-tv-ok" autofocus onclick="desbloquearComControle()">
+  🆗 PRESSIONE 'OK' NO CONTROLE PARA ATIVAR A TV
+ </button>
+ <div class="subtitulo-modal">
+  Requisito do Android TV / Roku para liberar a reprodução de som
+ </div>
+</div>
+
 <div class="header-status">
  <div class="status-dot" id="statusDot"></div>
- <span id="statusTexto">TV Conectada</span>
+ <span id="statusTexto">Conectando...</span>
 </div>
 
 <div class="container" id="painelTv">
@@ -157,10 +235,24 @@ AGUARDANDO
 
 </div>
 
+<div class="diag-audio" id="diagAudio">
+ Áudio: Pressione OK no controle remoto...
+</div>
+
 <script>
 
 let audioCtx = null;
 let vozesDisponiveis = [];
+let audioDesbloqueado = false;
+let ultimaChamadaChaveTocada = null;
+let pacienteAtualDados = null;
+
+const playerAudio = document.getElementById('playerAudio');
+
+function atualizarDiag(msg) {
+ const el = document.getElementById('diagAudio');
+ if (el) el.innerText = 'Áudio: ' + msg;
+}
 
 function carregarVozes() {
  if (typeof window.speechSynthesis !== 'undefined') {
@@ -177,131 +269,181 @@ function obterOuCriarAudioContext() {
  if (!audioCtx) {
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
  }
- if (audioCtx.state === 'suspended') {
-  audioCtx.resume().catch(() => {});
- }
- if (window.speechSynthesis) {
-  window.speechSynthesis.resume();
- }
  return audioCtx;
 }
 
-function autoDesbloquearTV() {
+function desbloquearComControle() {
  const ctx = obterOuCriarAudioContext();
- if (ctx && ctx.state === 'suspended') {
+ if (ctx.state === 'suspended') {
   ctx.resume().catch(() => {});
  }
 
- try {
-  const bufferSilencioso = ctx.createBuffer(1, 1, 22050);
-  const fonte = ctx.createBufferSource();
-  fonte.buffer = bufferSilencioso;
-  fonte.connect(ctx.destination);
-  fonte.start(0);
- } catch(e) {}
+ // Desbloqueia permanentemente o tag <audio> estatico do DOM no Android WebView
+ playerAudio.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+ playerAudio.play().then(() => {
+  audioDesbloqueado = true;
+  localStorage.setItem('cmip_tv_audio_unlocked', 'true');
+  ocultarModalControle();
+  atualizarDiag('🟢 Liberado via controle (OK)!');
+  
+  tocarDingDong();
+  
+  if (pacienteAtualDados && pacienteAtualDados.senha) {
+   executarChamadaSonora(pacienteAtualDados.senha, pacienteAtualDados.nome, pacienteAtualDados.guiche, true);
+  }
+ }).catch(err => {
+  audioDesbloqueado = true;
+  ocultarModalControle();
+  atualizarDiag('🟢 Liberado (Tentativa OK)');
+  tocarDingDong();
+  if (pacienteAtualDados && pacienteAtualDados.senha) {
+   executarChamadaSonora(pacienteAtualDados.senha, pacienteAtualDados.nome, pacienteAtualDados.guiche, true);
+  }
+ });
 
  if (window.speechSynthesis) {
   window.speechSynthesis.resume();
  }
 }
 
-// Desbloqueio automático contínuo sem requerer clique manual
-window.addEventListener('DOMContentLoaded', autoDesbloquearTV);
-window.addEventListener('load', autoDesbloquearTV);
-window.addEventListener('focus', autoDesbloquearTV);
+function ocultarModalControle() {
+ const m = document.getElementById('modalControleTv');
+ if (m) m.style.display = 'none';
+}
 
-['click', 'touchstart', 'mousemove', 'keydown', 'pointerdown', 'scroll'].forEach(evt => {
- window.addEventListener(evt, autoDesbloquearTV, { passive: true });
+function exibirModalControle() {
+ const m = document.getElementById('modalControleTv');
+ if (m && !audioDesbloqueado) {
+  m.style.display = 'flex';
+  const btn = document.getElementById('btnAtivarTv');
+  if (btn) btn.focus();
+ }
+}
+
+// Ouvintes globais para qualquer tecla do controle remoto (OK, ENTER, D-Pad)
+window.addEventListener('keydown', (e) => {
+ if (!audioDesbloqueado) {
+  desbloquearComControle();
+ }
+});
+
+['click', 'touchstart', 'pointerdown'].forEach(evt => {
+ window.addEventListener(evt, () => {
+  if (!audioDesbloqueado) {
+   desbloquearComControle();
+  }
+ }, { passive: true });
 });
 
 function tocarDingDong() {
  try {
   const ctx = obterOuCriarAudioContext();
   if (!ctx) return;
+  
   if (ctx.state === 'suspended') {
    ctx.resume().catch(() => {});
   }
+
   const now = ctx.currentTime;
 
-  // Nota 1 (Mi5 - ~659Hz)
   const osc1 = ctx.createOscillator();
   const gain1 = ctx.createGain();
   osc1.type = 'sine';
   osc1.frequency.setValueAtTime(659.25, now);
-  gain1.gain.setValueAtTime(0.7, now);
+  gain1.gain.setValueAtTime(0.8, now);
   gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
   osc1.connect(gain1);
   gain1.connect(ctx.destination);
   osc1.start(now);
   osc1.stop(now + 0.6);
 
-  // Nota 2 (Dó5 - ~523Hz)
   const osc2 = ctx.createOscillator();
   const gain2 = ctx.createGain();
   osc2.type = 'sine';
   osc2.frequency.setValueAtTime(523.25, now + 0.35);
-  gain2.gain.setValueAtTime(0.7, now + 0.35);
+  gain2.gain.setValueAtTime(0.8, now + 0.35);
   gain2.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
   osc2.connect(gain2);
   gain2.connect(ctx.destination);
   osc2.start(now + 0.35);
   osc2.stop(now + 1.2);
+
+  atualizarDiag('🔔 Bipe Ding-Dong emitido');
  } catch(e) {
   console.error('Erro ao emitir bipe ding dong:', e);
  }
 }
 
-function executarChamadaSonora(senha, nome, guiche) {
- autoDesbloquearTV();
+function executarChamadaSonora(senha, nome, guiche, forcarRepeticao = false) {
+ const chaveAtual = `${senha}_${guiche}_${pacienteAtualDados?.timestamp || pacienteAtualDados?.chamado_em || ''}`;
+
+ if (!forcarRepeticao && ultimaChamadaChaveTocada === chaveAtual) {
+  return;
+ }
+
+ const ctx = obterOuCriarAudioContext();
+ if (ctx && ctx.state === 'suspended') {
+  ctx.resume().catch(() => {});
+ }
 
  const texto = `Atenção. Senha ${senha}. Paciente ${nome}. Dirigir-se ao guichê ${guiche}`;
 
- // 1. Toca o bipe Ding-Dong imediatamente
+ // 1. Bipe Ding Dong
  tocarDingDong();
 
- // 2. Aguarda 1.1s (tempo do bipe) para iniciar a fala do nome
+ // 2. Voz MP3 reutilizando a tag <audio> pré-desbloqueada no Android WebView
  setTimeout(() => {
-  falarTexto(texto);
+  falarTexto(texto, () => {
+   ultimaChamadaChaveTocada = chaveAtual;
+  });
  }, 1100);
 }
 
-function falarTexto(texto) {
+function falarTexto(texto, callbackSucesso) {
  const urlTts = `/api/tts?texto=${encodeURIComponent(texto)}`;
- const audio = new Audio();
  let fallbackAcionado = false;
 
  const acionarFallback = (motivo) => {
   if (fallbackAcionado) return;
   fallbackAcionado = true;
-  console.warn('⚠️ Acionando voz nativa do navegador (WebSpeech). Motivo:', motivo);
-  sintetizarWebSpeech(texto);
+  console.warn('⚠️ Acionando voz nativa WebSpeech. Motivo:', motivo);
+  atualizarDiag('⚠️ Usando voz nativa WebSpeech');
+  sintetizarWebSpeech(texto, callbackSucesso);
  };
 
  const timerSeguranca = setTimeout(() => {
-  acionarFallback('Timeout de carregamento do MP3');
+  acionarFallback('Timeout do MP3 (2.5s)');
  }, 2500);
 
- audio.onerror = () => {
+ playerAudio.onerror = () => {
   clearTimeout(timerSeguranca);
-  acionarFallback('Falha na rota /api/tts');
+  acionarFallback('Erro HTTP na rota /api/tts');
  };
 
- audio.oncanplaythrough = () => {
+ playerAudio.onended = () => {
   clearTimeout(timerSeguranca);
-  audio.play().then(() => {
-   console.log('✅ Áudio MP3 da chamada reproduzido com sucesso!');
-  }).catch(err => {
-   acionarFallback('Autoplay bloqueado no HTML5 Audio: ' + err);
-  });
+  atualizarDiag('✅ Reprodução MP3 concluída!');
+  if (callbackSucesso) callbackSucesso();
  };
 
- audio.src = urlTts;
- audio.load();
+ // Reutiliza a tag <audio id="playerAudio"> já pré-desbloqueada!
+ playerAudio.src = urlTts;
+ playerAudio.play().then(() => {
+  clearTimeout(timerSeguranca);
+  console.log('✅ Áudio MP3 reproduzido com sucesso no tag DOM!');
+  atualizarDiag('✅ Reproduzindo MP3 no Android TV...');
+ }).catch(err => {
+  console.warn('Falha no playerAudio.play():', err);
+  acionarFallback('Erro no playerAudio: ' + err.message);
+ });
 }
 
-function sintetizarWebSpeech(texto) {
+function sintetizarWebSpeech(texto, callbackSucesso) {
  if (!('speechSynthesis' in window)) {
-  console.error('SpeechSynthesis não suportado neste navegador.');
+  console.error('SpeechSynthesis não suportado no Android WebView.');
+  atualizarDiag('❌ SpeechSynthesis indisponível (Usando DingDong)');
+  tocarDingDong();
+  if (callbackSucesso) callbackSucesso();
   return;
  }
 
@@ -333,11 +475,16 @@ function sintetizarWebSpeech(texto) {
   }
 
   msg.onstart = () => {
-   console.log('🔊 WebSpeech iniciado para:', texto);
+   console.log('🔊 WebSpeech iniciado:', texto);
+   atualizarDiag('🔊 Voz WebSpeech executada');
+   if (callbackSucesso) callbackSucesso();
   };
 
   msg.onerror = (e) => {
    console.error('Erro no WebSpeech:', e);
+   atualizarDiag('❌ Erro WebSpeech (Bipe duplo fallback)');
+   tocarDingDong();
+   if (callbackSucesso) callbackSucesso();
   };
 
   window.speechSynthesis.speak(msg);
@@ -354,13 +501,13 @@ function sintetizarWebSpeech(texto) {
 }
 
 let socket = null;
-let ultimaChamadaChave = null;
 let usandoPolling = false;
 
 function atualizarTelaEAudio(dados) {
  if (!dados || !dados.senha) return;
+ pacienteAtualDados = dados;
 
- const chaveAtual = `${dados.id || ''}_${dados.senha}_${dados.guiche}_${dados.timestamp || dados.chamado_em || ''}`;
+ const chaveAtual = `${dados.senha}_${dados.guiche}_${dados.timestamp || dados.chamado_em || ''}`;
  
  document.getElementById('senhaTv').innerText = dados.senha;
  document.getElementById('nomeTv').innerText = dados.nome || '---';
@@ -373,17 +520,13 @@ function atualizarTelaEAudio(dados) {
   painel.classList.add('chamada-animada');
  }
 
- if (ultimaChamadaChave !== chaveAtual) {
-  ultimaChamadaChave = chaveAtual;
-  autoDesbloquearTV();
+ if (ultimaChamadaChaveTocada !== chaveAtual) {
   executarChamadaSonora(dados.senha, dados.nome, dados.guiche);
  }
 }
 
 async function checarFilaREST() {
- autoDesbloquearTV();
  try {
-  // 1. Tenta obter a última chamada ativa no servidor (sem cache)
   const resUltima = await fetch('/api/pacientes/ultima-chamada?t=' + Date.now(), { cache: 'no-store' });
   if (resUltima.ok) {
    const pacienteChamado = await resUltima.json();
@@ -393,7 +536,6 @@ async function checarFilaREST() {
    }
   }
 
-  // 2. Fallback: consulta lista de pacientes (sem cache)
   const res = await fetch('/api/pacientes?t=' + Date.now(), { cache: 'no-store' });
   if (res.ok) {
    const fila = await res.json();
@@ -424,7 +566,6 @@ if (typeof io !== 'undefined') {
   socket.on('connect', () => {
    const statusTexto = document.getElementById('statusTexto');
    if (statusTexto) statusTexto.innerText = 'TV Conectada (WebSocket)';
-   autoDesbloquearTV();
    checarFilaREST();
   });
 
@@ -442,12 +583,21 @@ if (typeof io !== 'undefined') {
  iniciarPollingREST();
 }
 
-// Fallback de garantia: ativa Polling em 2.5s se socket não conectou
 setTimeout(() => {
  if (!socket || !socket.connected) {
   iniciarPollingREST();
  }
 }, 2500);
+
+window.addEventListener('DOMContentLoaded', () => {
+ const btn = document.getElementById('btnAtivarTv');
+ if (btn) btn.focus();
+
+ if (localStorage.getItem('cmip_tv_audio_unlocked') === 'true') {
+  ocultarModalControle();
+  audioDesbloqueado = true;
+ }
+});
 
 </script>
 

@@ -146,8 +146,8 @@ h3 {
 </head>
 <body>
 
-<!-- Canal de Mídia Silencioso de Inicialização Automática no DOM (Zero-Clique) -->
-<audio id="playerAudio" autoplay loop muted playsinline src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA" crossorigin="anonymous"></audio>
+<!-- Player Estático Reutilizável no DOM (Kiosk Mode) -->
+<audio id="playerAudio" playsinline crossorigin="anonymous"></audio>
 
 <div class="header-status">
  <div class="status-dot" id="statusDot"></div>
@@ -173,7 +173,7 @@ AGUARDANDO
 </div>
 
 <div class="diag-audio" id="diagAudio">
- Áudio: Modo Automático (Zero-Clique)
+ Áudio: Modo Kiosk (100% Automático)
 </div>
 
 <script>
@@ -214,17 +214,11 @@ function autoDesbloquearZeroClique() {
   ctx.resume().catch(() => {});
  }
  
- if (playerAudio) {
-  playerAudio.muted = false;
-  playerAudio.play().catch(() => {});
- }
- 
  if (window.speechSynthesis) {
   window.speechSynthesis.resume();
  }
 }
 
-// Ouvintes globais transparentes
 ['DOMContentLoaded', 'load', 'focus', 'click', 'touchstart', 'pointerdown', 'keydown'].forEach(evt => {
  window.addEventListener(evt, autoDesbloquearZeroClique, { passive: true });
 });
@@ -262,7 +256,7 @@ function tocarDingDong() {
   osc2.start(now + 0.35);
   osc2.stop(now + 1.2);
 
-  atualizarDiag('🔔 Bipe Ding-Dong emitido');
+  atualizarDiag('🔔 Bipe Ding-Dong (1x)');
  } catch(e) {
   console.error('Erro ao emitir bipe ding dong:', e);
  }
@@ -275,22 +269,22 @@ function executarChamadaSonora(senha, nome, guiche, forcarRepeticao = false) {
   return;
  }
 
+ ultimaChamadaChaveTocada = chaveAtual;
+
  autoDesbloquearZeroClique();
 
  const texto = `Atenção. Senha ${senha}. Paciente ${nome}. Dirigir-se ao guichê ${guiche}`;
 
- // 1. Bipe Ding Dong
+ // 1. Bipe Ding Dong (1 vez)
  tocarDingDong();
 
- // 2. Voz MP3 no canal de áudio pré-desbloqueado
+ // 2. Voz MP3 (1 vez)
  setTimeout(() => {
-  falarTexto(texto, () => {
-   ultimaChamadaChaveTocada = chaveAtual;
-  });
+  falarTexto(texto);
  }, 1100);
 }
 
-function falarTexto(texto, callbackSucesso) {
+function falarTexto(texto) {
  const urlTts = `/api/tts?texto=${encodeURIComponent(texto)}`;
  let fallbackAcionado = false;
 
@@ -299,7 +293,7 @@ function falarTexto(texto, callbackSucesso) {
   fallbackAcionado = true;
   console.warn('⚠️ Acionando voz nativa WebSpeech. Motivo:', motivo);
   atualizarDiag('⚠️ Usando voz nativa WebSpeech');
-  sintetizarWebSpeech(texto, callbackSucesso);
+  sintetizarWebSpeech(texto);
  };
 
  const timerSeguranca = setTimeout(() => {
@@ -313,18 +307,18 @@ function falarTexto(texto, callbackSucesso) {
 
  playerAudio.onended = () => {
   clearTimeout(timerSeguranca);
-  atualizarDiag('✅ Reprodução concluída');
-  if (callbackSucesso) callbackSucesso();
+  atualizarDiag('✅ Reprodução MP3 concluída');
  };
 
+ playerAudio.loop = false;
  playerAudio.muted = false;
  playerAudio.src = urlTts;
+
  const p = playerAudio.play();
  if (p !== undefined) {
   p.then(() => {
    clearTimeout(timerSeguranca);
-   atualizarDiag('✅ Reproduzindo chamada...');
-   if (callbackSucesso) callbackSucesso();
+   atualizarDiag('✅ Reproduzindo fala MP3...');
   }).catch(err => {
    console.warn('Bloqueio no playerAudio.play():', err);
    acionarFallback('Autoplay bloqueado: ' + err.message);
@@ -332,12 +326,10 @@ function falarTexto(texto, callbackSucesso) {
  }
 }
 
-function sintetizarWebSpeech(texto, callbackSucesso) {
+function sintetizarWebSpeech(texto) {
  if (!('speechSynthesis' in window)) {
   console.error('SpeechSynthesis não suportado neste navegador.');
   atualizarDiag('❌ SpeechSynthesis indisponível');
-  tocarDingDong();
-  if (callbackSucesso) callbackSucesso();
   return;
  }
 
@@ -371,14 +363,11 @@ function sintetizarWebSpeech(texto, callbackSucesso) {
   msg.onstart = () => {
    console.log('🔊 WebSpeech iniciado:', texto);
    atualizarDiag('🔊 Voz WebSpeech em execução');
-   if (callbackSucesso) callbackSucesso();
   };
 
   msg.onerror = (e) => {
    console.error('Erro no WebSpeech:', e);
    atualizarDiag('❌ Erro WebSpeech');
-   tocarDingDong();
-   if (callbackSucesso) callbackSucesso();
   };
 
   window.speechSynthesis.speak(msg);

@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>CMIP - Sistema de Senhas</title>
+
+<script src="/socket.io/socket.io.js"></script>
+
+<style>
+
+body{
+ margin:0;
+ font-family:Arial, sans-serif;
+ background:#f4f6f9;
+}
+
+header{
+ background:#0b7a33;
+ color:white;
+ padding:20px;
+ text-align:center;
+}
+
+.container{
+ padding:20px;
+}
+
+.card{
+ background:white;
+ padding:20px;
+ border-radius:10px;
+ margin-bottom:20px;
+ box-shadow:0 4px 10px rgba(0,0,0,.1);
+}
+
+input,select,button{
+ padding:10px;
+ margin:5px;
+}
+
+button{
+ background:#0b7a33;
+ color:white;
+ border:none;
+ border-radius:6px;
+ cursor:pointer;
+ font-weight:bold;
+}
+
+table{
+ width:100%;
+ border-collapse:collapse;
+}
+
+th,td{
+ padding:10px;
+ border-bottom:1px solid #ddd;
+ text-align:center;
+}
+
+.tv{
+ background:black;
+ color:#00ff00;
+ text-align:center;
+ padding:60px 20px;
+ border-radius:15px;
+ position:relative;
+}
+
+.tv h1{
+ font-size:80px;
+ margin:0;
+ text-shadow: 0 0 15px rgba(0,255,0,0.5);
+}
+
+.tv h2{
+ color:#00ffff;
+ font-size:35px;
+ text-shadow: 0 0 10px rgba(0,255,255,0.5);
+}
+
+.tv h3{
+ color: white;
+ font-size: 28px;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<header>
+<h1>CMIP - Sistema de Senhas</h1>
+</header>
+
+<div class="container">
+
+<div class="card">
+
+<h2>Recepção</h2>
+
+<div style="margin-bottom: 15px; padding: 10px; background: #eef7f1; border: 1px solid #c8e6c9; border-radius: 6px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+<label for="numeroInicial" style="font-size: 14px; font-weight: bold; color: #0b7a33;">Número Inicial da Senha:</label>
+<input type="number" id="numeroInicial" value="1" min="1" style="width: 100px; padding: 8px; margin: 0;" onchange="alterarNumeroInicial()" oninput="alterarNumeroInicial()">
+</div>
+
+<input type="text" id="nome" placeholder="Nome do paciente">
+
+<select id="tipo" onchange="atualizarCampoNumeroInicial()">
+<option value="A">Normal</option>
+<option value="P">Prioritário</option>
+<option value="E">Emergência</option>
+</select>
+
+<button onclick="gerarSenha()">Gerar Senha</button>
+
+</div>
+
+<div class="card">
+
+<h2>Painel Médico</h2>
+
+<select id="guiche">
+<option value="1">Guichê 1</option>
+<option value="2">Guichê 2</option>
+<option value="3">Guichê 3</option>
+</select>
+
+<table>
+
+<thead>
+<tr>
+<th>Senha</th>
+<th>Nome</th>
+<th>Tipo</th>
+<th>Status</th>
+<th>Ações</th>
+</tr>
+</thead>
+
+<tbody id="filaTabela"></tbody>
+
+</table>
+
+</div>
+
+<div class="tv">
+
+<h1 id="senhaTv">AGUARDANDO</h1>
+<h2 id="nomeTv">---</h2>
+<h3 id="guicheTv">---</h3>
+
+</div>
+
+</div>
+
+<script>
+
+let audioCtx = null;
+let vozesDisponiveis = [];
+
+function carregarVozes() {
+ if (typeof window.speechSynthesis !== 'undefined') {
+  vozesDisponiveis = window.speechSynthesis.getVoices() || [];
+ }
+}
+
+if (typeof window.speechSynthesis !== 'undefined') {
+ carregarVozes();
+ window.speechSynthesis.onvoiceschanged = carregarVozes;
+}
+
+function obterOuCriarAudioContext() {
+ if (!audioCtx) {
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+ }
+ if (audioCtx.state === 'suspended') {
+  audioCtx.resume().catch(() => {});
+ }
+ if (window.speechSynthesis) {
+  window.speechSynthesis.resume();
+ }
+ return audioCtx;
+}
+
+function autoDesbloquear() {
+ const ctx = obterOuCriarAudioContext();
+ try {
+  const bufferSilencioso = ctx.createBuffer(1, 1, 22050);
+  const fonte = ctx.createBufferSource();
+  fonte.buffer = bufferSilencioso;
+  fonte.connect(ctx.destination);
+  fonte.start(0);
+ } catch(e) {}
+}
+
+window.addEventListener('DOMContentLoaded', autoDesbloquear);
+['click', 'touchstart', 'mousemove', 'keydown', 'pointerdown'].forEach(evt => {
+ window.addEventListener(evt, autoDesbloquear, { passive: true });
+});
+
+function tocarDingDong() {
+ try {
+  const ctx = obterOuCriarAudioContext();
+  const now = ctx.currentTime;
+
+  const osc1 = ctx.createOscillator();
+  const gain1 = ctx.createGain();
+  osc1.type = 'sine';
+  osc1.frequency.setValueAtTime(659.25, now);
+  gain1.gain.setValueAtTime(0.5, now);
+  gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+  osc1.connect(gain1);
+  gain1.connect(ctx.destination);
+  osc1.start(now);
+  osc1.stop(now + 0.6);
+
+  const osc2 = ctx.createOscillator();
+  const gain2 = ctx.createGain();
+  osc2.type = 'sine';
+  osc2.frequency.setValueAtTime(523.25, now + 0.3);
+  gain2.gain.setValueAtTime(0.5, now + 0.3);
+  gain2.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
+  osc2.connect(gain2);
+  gain2.connect(ctx.destination);
+  osc2.start(now + 0.3);
+  osc2.stop(now + 1.2);
+ } catch(e) {}
+}
+
+function executarChamadaSonora(senha, nome, guiche) {
+ const ctx = obterOuCriarAudioContext();
+ if (ctx && ctx.state === 'suspended') {
+  ctx.resume().catch(() => {});
+ }
+
+ const texto = `Atenção. Senha ${senha}. Paciente ${nome}. Dirigir-se ao guichê ${guiche}`;
+
+ tocarDingDong();
+
+ setTimeout(() => {
+  falarTexto(texto);
+ }, 1100);
+}
+
+function falarTexto(texto) {
+ const urlTts = `/api/tts?texto=${encodeURIComponent(texto)}`;
+ const audio = new Audio();
+ let fallbackAcionado = false;
+
+ const acionarFallback = (motivo) => {
+  if (fallbackAcionado) return;
+  fallbackAcionado = true;
+  sintetizarWebSpeech(texto);
+ };
+
+ const timerSeguranca = setTimeout(() => {
+  acionarFallback('Timeout do MP3');
+ }, 2500);
+
+ audio.onerror = () => {
+  clearTimeout(timerSeguranca);
+  acionarFallback('Erro HTTP no TTS');
+ };
+
+ audio.oncanplaythrough = () => {
+  clearTimeout(timerSeguranca);
+  audio.play().catch(err => {
+   acionarFallback('Bloqueio autoplay: ' + err);
+  });
+ };
+
+ audio.src = urlTts;
+ audio.load();
+}
+
+function sintetizarWebSpeech(texto) {
+ if (!('speechSynthesis' in window)) return;
+
+ window.speechSynthesis.resume();
+ window.speechSynthesis.cancel();
+
+ setTimeout(() => {
+  window.speechSynthesis.resume();
+
+  const msg = new SpeechSynthesisUtterance(texto);
+  msg.lang = 'pt-BR';
+  msg.rate = 0.88;
+  msg.pitch = 1.0;
+  msg.volume = 1.0;
+
+  const vozes = (window.speechSynthesis.getVoices() || []).concat(vozesDisponiveis);
+  if (vozes && vozes.length > 0) {
+   const vozPtBr = vozes.find(v => v.lang && (v.lang === 'pt-BR' || v.lang === 'pt_BR'));
+   const vozPt = vozes.find(v => v.lang && v.lang.toLowerCase().includes('pt'));
+   if (vozPtBr) {
+    msg.voice = vozPtBr;
+   } else if (vozPt) {
+    msg.voice = vozPt;
+   }
+  }
+
+  window.speechSynthesis.speak(msg);
+
+  const keepAlive = setInterval(() => {
+   if (window.speechSynthesis.speaking) {
+    window.speechSynthesis.resume();
+   } else {
+    clearInterval(keepAlive);
+   }
+  }, 500);
+ }, 60);
+}
+
+var contadorInicial = parseInt(localStorage.getItem('cmip_contador')) || 1;
+
+function obterContador() {
+ if (typeof contadorInicial === 'undefined' || isNaN(contadorInicial)) {
+  contadorInicial = parseInt(localStorage.getItem('cmip_contador')) || 1;
+ }
+ return contadorInicial;
+}
+
+function salvarContador(val) {
+ contadorInicial = val;
+ localStorage.setItem('cmip_contador', val);
+}
+
+function atualizarCampoNumeroInicial() {
+ const inputInicial = document.getElementById('numeroInicial');
+ if (inputInicial) {
+  inputInicial.value = obterContador();
+ }
+}
+
+function alterarNumeroInicial() {
+ const inputInicial = document.getElementById('numeroInicial');
+ if (inputInicial) {
+  const val = parseInt(inputInicial.value, 10);
+  if (!isNaN(val) && val > 0) {
+   salvarContador(val);
+  }
+ }
+}
+
+function atualizarContadoresComFila(listaFila) {
+ if (!listaFila || !Array.isArray(listaFila)) return;
+ let maxNum = obterContador();
+ listaFila.forEach(p => {
+  if (p.senha) {
+   const match = p.senha.match(/\d+/);
+   if (match) {
+    const num = parseInt(match[0], 10);
+    if (!isNaN(num) && num >= maxNum) {
+     maxNum = num + 1;
+    }
+   }
+  }
+ });
+ salvarContador(maxNum);
+ atualizarCampoNumeroInicial();
+}
+
+let socket = null;
+let fila = [];
+let ultimaChamadaChave = null;
+let usandoPolling = false;
+
+function atualizarTelaEAudio(dados) {
+ const chaveAtual = `${dados.id || ''}_${dados.senha}_${dados.guiche}`;
+ document.getElementById('senhaTv').innerText = dados.senha;
+ document.getElementById('nomeTv').innerText = dados.nome;
+ document.getElementById('guicheTv').innerText = 'Guichê ' + dados.guiche;
+
+ if (ultimaChamadaChave !== chaveAtual) {
+  ultimaChamadaChave = chaveAtual;
+  autoDesbloquear();
+  executarChamadaSonora(dados.senha, dados.nome, dados.guiche);
+ }
+}
+
+async function carregarFilaREST() {
+ try {
+  const res = await fetch('/api/pacientes');
+  if (res.ok) {
+   fila = await res.json();
+   atualizarContadoresComFila(fila);
+   atualizarTabela();
+
+   const pacienteChamado = fila.find(p => p.chamado === true);
+   if (pacienteChamado) {
+    atualizarTelaEAudio(pacienteChamado);
+   }
+  }
+ } catch(err) {
+  console.warn('Erro ao carregar fila via REST:', err);
+ }
+}
+
+function iniciarPolling() {
+ if (usandoPolling) return;
+ usandoPolling = true;
+ carregarFilaREST();
+ setInterval(carregarFilaREST, 2000);
+}
+
+if (typeof io !== 'undefined') {
+ try {
+  socket = io({ timeout: 3000, reconnectionAttempts: 3 });
+
+  socket.on('connect', () => {
+   console.log('⚡ Conectado ao WebSocket local!');
+   autoDesbloquear();
+  });
+
+  socket.on('filaAtualizada', (novaFila) => {
+   fila = novaFila;
+   atualizarContadoresComFila(fila);
+   atualizarTabela();
+  });
+
+  socket.on('novaChamada', (dados) => {
+   atualizarTelaEAudio(dados);
+  });
+
+  socket.on('connect_error', () => {
+   iniciarPolling();
+  });
+ } catch(e) {
+  iniciarPolling();
+ }
+} else {
+ iniciarPolling();
+}
+
+setTimeout(() => {
+ if (!socket || !socket.connected) {
+  iniciarPolling();
+ }
+}, 2500);
+
+async function gerarSenha() {
+ const nome = document.getElementById('nome').value;
+ const tipo = document.getElementById('tipo').value;
+
+ if (!nome) {
+  alert('Digite o nome');
+  return;
+ }
+
+ const numFinal = obterContador();
+ salvarContador(numFinal + 1);
+ atualizarCampoNumeroInicial();
+
+ const senha = String(numFinal).padStart(3, '0');
+
+ if (socket && socket.connected) {
+  socket.emit('gerarSenha', { senha, nome, tipo });
+ }
+
+ try {
+  await fetch('/api/pacientes/gerar', {
+   method: 'POST',
+   headers: { 'Content-Type': 'application/json' },
+   body: JSON.stringify({ senha, nome, tipo })
+  });
+  carregarFilaREST();
+ } catch(err) {
+  console.error('Erro ao gerar senha por REST:', err);
+ }
+
+ document.getElementById('nome').value = '';
+}
+
+function atualizarTabela() {
+ const tabela = document.getElementById('filaTabela');
+ tabela.innerHTML = '';
+
+ fila.forEach((p, i) => {
+  tabela.innerHTML += `
+   <tr>
+    <td>${p.senha}</td>
+    <td>${p.nome}</td>
+    <td>${p.tipo}</td>
+    <td>${p.chamado ? 'Chamado' : 'Aguardando'}</td>
+    <td>
+     <button onclick="chamar(${i})">Chamar</button>
+     <button onclick="finalizar(${i})">Finalizar</button>
+    </td>
+   </tr>
+  `;
+ });
+}
+
+async function chamar(index) {
+ const guiche = document.getElementById('guiche').value;
+ const paciente = fila[index];
+
+ if (socket && socket.connected) {
+  socket.emit('chamarPaciente', { index, guiche });
+ }
+
+ try {
+  await fetch('/api/pacientes/chamar', {
+   method: 'POST',
+   headers: { 'Content-Type': 'application/json' },
+   body: JSON.stringify({ index, guiche, id: paciente ? paciente.id : null })
+  });
+  carregarFilaREST();
+ } catch(err) {
+  console.error('Erro ao chamar paciente por REST:', err);
+ }
+}
+
+async function finalizar(index) {
+ const paciente = fila[index];
+
+ if (socket && socket.connected) {
+  socket.emit('finalizarPaciente', index);
+ }
+
+ try {
+  await fetch('/api/pacientes/finalizar', {
+   method: 'POST',
+   headers: { 'Content-Type': 'application/json' },
+   body: JSON.stringify({ index, id: paciente ? paciente.id : null })
+  });
+  carregarFilaREST();
+ } catch(err) {
+  console.error('Erro ao finalizar paciente por REST:', err);
+ }
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+ atualizarCampoNumeroInicial();
+ carregarFilaREST();
+});
+
+</script>
+
+</body>
+</html>

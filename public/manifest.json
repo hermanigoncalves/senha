@@ -1,0 +1,9 @@
+{
+  "short_name": "CMIP TV",
+  "name": "CMIP - Sistema de Chamada TV",
+  "start_url": "/tv",
+  "background_color": "#000000",
+  "theme_color": "#0b7a33",
+  "display": "standalone",
+  "orientation": "landscape"
+}

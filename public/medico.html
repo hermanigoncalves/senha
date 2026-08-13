@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Médico</title>
+
+<script src="/socket.io/socket.io.js"></script>
+
+<style>
+
+body{
+ font-family:Arial;
+ background:#f4f6f9;
+ padding:30px;
+}
+
+.card{
+ background:white;
+ padding:20px;
+ border-radius:10px;
+ box-shadow:0 4px 10px rgba(0,0,0,.1);
+}
+
+table{
+ width:100%;
+ border-collapse:collapse;
+}
+
+th,td{
+ padding:10px;
+ border-bottom:1px solid #ddd;
+ text-align:center;
+}
+
+button{
+ padding:10px;
+ border:none;
+ background:#0b7a33;
+ color:white;
+ margin:2px;
+}
+
+</style>
+
+</head>
+<body>
+
+<div class="card">
+
+<h1>Painel Médico</h1>
+
+<select id="guiche">
+<option value="1">Guichê 1</option>
+<option value="2">Guichê 2</option>
+<option value="3">Guichê 3</option>
+</select>
+
+<table>
+
+<thead>
+<tr>
+<th>Senha</th>
+<th>Nome</th>
+<th>Tipo</th>
+<th>Status</th>
+<th>Ações</th>
+</tr>
+</thead>
+
+<tbody id="filaTabela"></tbody>
+
+</table>
+
+</div>
+
+<script>
+let socket = null;
+let fila = [];
+let usandoPolling = false;
+
+async function carregarFilaREST() {
+ try {
+  const res = await fetch('/api/pacientes');
+  if (res.ok) {
+   fila = await res.json();
+   atualizarTabela();
+  }
+ } catch (err) {
+  console.warn('Erro ao carregar fila via REST:', err);
+ }
+}
+
+function iniciarPolling() {
+ if (usandoPolling) return;
+ usandoPolling = true;
+ carregarFilaREST();
+ setInterval(carregarFilaREST, 2000);
+}
+
+if (typeof io !== 'undefined') {
+ try {
+  socket = io({ timeout: 3000, reconnectionAttempts: 3 });
+  
+  socket.on('connect', () => {
+   console.log('⚡ Conectado ao WebSocket local');
+  });
+
+  socket.on('filaAtualizada', (novaFila) => {
+   fila = novaFila;
+   atualizarTabela();
+  });
+
+  socket.on('connect_error', () => {
+   iniciarPolling();
+  });
+ } catch(e) {
+  iniciarPolling();
+ }
+} else {
+ iniciarPolling();
+}
+
+setTimeout(() => {
+ if (!socket || !socket.connected) {
+  iniciarPolling();
+ }
+}, 2500);
+
+function atualizarTabela() {
+ const tabela = document.getElementById('filaTabela');
+ tabela.innerHTML = '';
+
+ fila.forEach((p, i) => {
+  tabela.innerHTML += `
+  <tr>
+   <td>${p.senha}</td>
+   <td>${p.nome}</td>
+   <td>${p.tipo}</td>
+   <td>${p.chamado ? 'Chamado' : 'Aguardando'}</td>
+   <td>
+    <button onclick="chamar(${i})">Chamar</button>
+    <button onclick="finalizar(${i})">Finalizar</button>
+   </td>
+  </tr>
+  `;
+ });
+}
+
+async function chamar(index) {
+ const guiche = document.getElementById('guiche').value;
+ const paciente = fila[index];
+
+ if (socket && socket.connected) {
+  socket.emit('chamarPaciente', { index, guiche });
+ }
+
+ try {
+  await fetch('/api/pacientes/chamar', {
+   method: 'POST',
+   headers: { 'Content-Type': 'application/json' },
+   body: JSON.stringify({ index, guiche, id: paciente ? paciente.id : null })
+  });
+  carregarFilaREST();
+ } catch(err) {
+  console.error('Erro ao chamar paciente via REST:', err);
+ }
+}
+
+async function finalizar(index) {
+ const paciente = fila[index];
+
+ if (socket && socket.connected) {
+  socket.emit('finalizarPaciente', index);
+ }
+
+ try {
+  await fetch('/api/pacientes/finalizar', {
+   method: 'POST',
+   headers: { 'Content-Type': 'application/json' },
+   body: JSON.stringify({ index, id: paciente ? paciente.id : null })
+  });
+  carregarFilaREST();
+ } catch(err) {
+  console.error('Erro ao finalizar paciente via REST:', err);
+ }
+}
+
+</script>
+
+</body>
+</html>

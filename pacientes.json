@@ -1,0 +1,20 @@
+[
+  {
+    "id": 1786548603121,
+    "senha": "A001",
+    "nome": "Hermani Fonseca",
+    "tipo": "A",
+    "status": "CHAMADO",
+    "guiche": "1",
+    "criado_em": "2026-08-12T15:30:03.121Z"
+  },
+  {
+    "id": 1786548758344,
+    "senha": "002",
+    "nome": "Hermani Fonseca",
+    "tipo": "A",
+    "status": "CHAMADO",
+    "guiche": "1",
+    "criado_em": "2026-08-12T15:32:38.344Z"
+  }
+]

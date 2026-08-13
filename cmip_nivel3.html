@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>CMIP - Sistema Avançado</title>
+
+<style>
+body{
+ margin:0;
+ font-family:Arial, sans-serif;
+ background:#f4f6f9;
+ user-select:none;
+}
+
+.login{
+ display:flex;
+ height:100vh;
+ justify-content:center;
+ align-items:center;
+ background:#0b7a33;
+}
+
+.login-box{
+ background:white;
+ padding:40px;
+ border-radius:15px;
+ text-align:center;
+ box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+}
+
+button{
+ padding:12px;
+ margin:10px;
+ border:none;
+ border-radius:8px;
+ cursor:pointer;
+ font-weight:bold;
+}
+
+.sidebar{
+ width:220px;
+ background:#0b7a33;
+ color:white;
+ height:100vh;
+ padding-top:20px;
+ position:fixed;
+}
+
+.sidebar button{
+ width:90%;
+ background:white;
+ color:#0b7a33;
+}
+
+.main{
+ margin-left:220px;
+ padding:30px;
+}
+
+.card{
+ background:white;
+ padding:20px;
+ border-radius:12px;
+ box-shadow:0 4px 12px rgba(0,0,0,.1);
+ margin-bottom:20px;
+}
+
+.hidden{display:none}
+
+.tv{
+ background:black;
+ color:#00ff00;
+ text-align:center;
+ padding:80px 20px;
+ border-radius:15px;
+ position: relative;
+}
+
+.tv h1{font-size:80px;margin:0; text-shadow:0 0 15px rgba(0,255,0,0.5);}
+.tv h2{font-size:35px;color:#00ffff; text-shadow:0 0 10px rgba(0,255,255,0.5);}
+.tv h3{font-size:25px; color:white;}
+
+.stat{
+ font-size:20px;
+ margin:10px 0;
+}
+
+.audio-btn {
+ background: #ff9800;
+ color: black;
+ border: none;
+ padding: 10px 20px;
+ border-radius: 20px;
+ font-weight: bold;
+ cursor: pointer;
+ margin-bottom: 15px;
+ font-size: 16px;
+}
+</style>
+</head>
+
+<body onclick="iniciarAudio()">
+
+<div id="login" class="login">
+<div class="login-box">
+<h2>🏥 CMIP - Login</h2>
+<button onclick="entrar('recepcao')">Recepção</button>
+<button onclick="entrar('medico')">Médico</button>
+<button onclick="entrar('tv')">TV</button>
+</div>
+</div>
+
+<div id="sistema" class="hidden">
+
+<div class="sidebar">
+<h3 style="text-align:center">CMIP</h3>
+<button onclick="mostrar('dashboard')">Dashboard</button>
+<button onclick="mostrar('recepcao')">Recepção</button>
+<button onclick="mostrar('medico')">Médico</button>
+<button onclick="mostrar('tv')">TV</button>
+<button onclick="logout()">Sair</button>
+</div>
+
+<div class="main">
+
+<div id="dashboard">
+<div class="card">
+<h3>📊 Estatísticas</h3>
+<div class="stat">Aguardando: <span id="statFila">0</span></div>
+<div class="stat">Chamados: <span id="statChamados">0</span></div>
+<div class="stat">Emergência: <span id="statEmergencia">0</span></div>
+</div>
+</div>
+
+<div id="recepcao" class="hidden">
+<div class="card">
+<h3>Recepção</h3>
+<div style="margin-bottom: 12px; padding: 8px 12px; background: #eef7f1; border: 1px solid #c8e6c9; border-radius: 6px;">
+<label for="numeroInicial" style="font-size: 14px; font-weight: bold; color: #0b7a33; display: block; margin-bottom: 5px;">Número Inicial da Senha:</label>
+<input type="number" id="numeroInicial" value="1" min="1" onchange="alterarNumeroInicial()" oninput="alterarNumeroInicial()">
+</div>
+<input type="text" id="nome" placeholder="Nome do paciente">
+<select id="tipo" onchange="atualizarCampoNumeroInicial()">
+<option value="A">Normal</option>
+<option value="P">Prioritário</option>
+<option value="E">Emergência</option>
+</select>
+<button onclick="gerar()">Gerar Senha</button>
+</div>
+</div>
+
+<div id="medico" class="hidden">
+<div class="card">
+<h3>Painel Médico</h3>
+
+<select id="guiche">
+<option value="1">Guichê 1</option>
+<option value="2">Guichê 2</option>
+<option value="3">Guichê 3</option>
+</select>
+
+<button onclick="chamarAuto()">Chamar Próximo</button>
+
+<table width="100%">
+<thead>
+<tr>
+<th>Senha</th>
+<th>Nome</th>
+<th>Tipo</th>
+<th>Status</th>
+<th>Ação</th>
+</tr>
+</thead>
+<tbody id="filaTabela"></tbody>
+</table>
+</div>
+</div>
+
+<div id="tv" class="hidden">
+<div class="tv">
+<button id="btnAudio" class="audio-btn" onclick="iniciarAudio()">🔊 Clique para Ativar Áudio da TV</button>
+<h1 id="senhaTv">AGUARDANDO</h1>
+<h2 id="nomeTv">---</h2>
+<h3 id="guicheTv">---</h3>
+</div>
+</div>
+
+</div>
+</div>
+
+<script>
+
+let audioCtx = null;
+let audioAtivo = false;
+
+function iniciarAudio() {
+ if (!audioCtx) {
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+ }
+ if (audioCtx.state === 'suspended') {
+  audioCtx.resume();
+ }
+
+ window.speechSynthesis.resume();
+ const testUtt = new SpeechSynthesisUtterance('');
+ window.speechSynthesis.speak(testUtt);
+
+ audioAtivo = true;
+ const btn = document.getElementById('btnAudio');
+ if (btn) {
+  btn.style.background = '#4caf50';
+  btn.style.color = 'white';
+  btn.innerText = '🔊 Som Ativado';
+ }
+}
+
+function tocarDingDong(callback) {
+ if (!audioCtx) {
+  iniciarAudio();
+ }
+ if (audioCtx && audioCtx.state === 'suspended') {
+  audioCtx.resume();
+ }
+
+ try {
+  const now = audioCtx.currentTime;
+
+  const osc1 = audioCtx.createOscillator();
+  const gain1 = audioCtx.createGain();
+  osc1.type = 'sine';
+  osc1.frequency.setValueAtTime(659.25, now);
+  gain1.gain.setValueAtTime(0.5, now);
+  gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+  osc1.connect(gain1);
+  gain1.connect(audioCtx.destination);
+  osc1.start(now);
+  osc1.stop(now + 0.6);
+
+  const osc2 = audioCtx.createOscillator();
+  const gain2 = audioCtx.createGain();
+  osc2.type = 'sine';
+  osc2.frequency.setValueAtTime(523.25, now + 0.3);
+  gain2.gain.setValueAtTime(0.5, now + 0.3);
+  gain2.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
+  osc2.connect(gain2);
+  gain2.connect(audioCtx.destination);
+  osc2.start(now + 0.3);
+  osc2.stop(now + 1.2);
+
+  setTimeout(() => {
+   if (callback) callback();
+  }, 1100);
+ } catch(e) {
+  console.error('Erro ao tocar ding dong:', e);
+  if (callback) callback();
+ }
+}
+
+function falarChamada(senha, nome, guiche) {
+ const texto = `Atenção. Senha ${senha}. Paciente ${nome}. Dirigir-se ao guichê ${guiche}`;
+ const urlTts = `/api/tts?texto=${encodeURIComponent(texto)}`;
+ const audio = new Audio();
+ let fallbackAcionado = false;
+
+ const acionarFallback = (motivo) => {
+  if (fallbackAcionado) return;
+  fallbackAcionado = true;
+  sintetizarWebSpeech(texto);
+ };
+
+ const timerSeguranca = setTimeout(() => {
+  acionarFallback('Timeout do MP3');
+ }, 2500);
+
+ audio.onerror = () => {
+  clearTimeout(timerSeguranca);
+  acionarFallback('Erro HTTP no TTS');
+ };
+
+ audio.oncanplaythrough = () => {
+  clearTimeout(timerSeguranca);
+  audio.play().catch(err => {
+   acionarFallback('Bloqueio autoplay: ' + err);
+  });
+ };
+
+ audio.src = urlTts;
+ audio.load();
+}
+
+function sintetizarWebSpeech(texto) {
+ if (!('speechSynthesis' in window)) return;
+
+ window.speechSynthesis.resume();
+ window.speechSynthesis.cancel();
+
+ setTimeout(() => {
+  window.speechSynthesis.resume();
+
+  const msg = new SpeechSynthesisUtterance(texto);
+  msg.lang = 'pt-BR';
+  msg.rate = 0.88;
+  msg.pitch = 1.0;
+  msg.volume = 1.0;
+
+  const vozes = window.speechSynthesis.getVoices() || [];
+  if (vozes && vozes.length > 0) {
+   const vozPtBr = vozes.find(v => v.lang && (v.lang === 'pt-BR' || v.lang === 'pt_BR'));
+   const vozPt = vozes.find(v => v.lang && v.lang.toLowerCase().includes('pt'));
+   if (vozPtBr) {
+    msg.voice = vozPtBr;
+   } else if (vozPt) {
+    msg.voice = vozPt;
+   }
+  }
+
+  window.speechSynthesis.speak(msg);
+
+  const keepAlive = setInterval(() => {
+   if (window.speechSynthesis.speaking) {
+    window.speechSynthesis.resume();
+   } else {
+    clearInterval(keepAlive);
+   }
+  }, 500);
+ }, 60);
+}
+
+if (typeof window.speechSynthesis !== 'undefined') {
+ window.speechSynthesis.onvoiceschanged = () => {
+  window.speechSynthesis.getVoices();
+ };
+}
+
+var contadorInicial = parseInt(localStorage.getItem('cmip_contador')) || 1;
+let fila = JSON.parse(localStorage.getItem("fila")) || [];
+let historico = JSON.parse(localStorage.getItem("historico")) || [];
+
+function obterContador() {
+ if (typeof contadorInicial === 'undefined' || isNaN(contadorInicial)) {
+  contadorInicial = parseInt(localStorage.getItem('cmip_contador')) || 1;
+ }
+ return contadorInicial;
+}
+
+function salvar(){
+ localStorage.setItem("cmip_contador", contadorInicial);
+ localStorage.setItem("fila",JSON.stringify(fila));
+ localStorage.setItem("historico",JSON.stringify(historico));
+}
+
+function entrar(perfil){
+ document.getElementById("login").classList.add("hidden");
+ document.getElementById("sistema").classList.remove("hidden");
+ mostrar(perfil);
+}
+
+function logout(){
+ location.reload();
+}
+
+function mostrar(tela){
+ document.querySelectorAll(".main > div").forEach(div=>div.classList.add("hidden"));
+ document.getElementById(tela).classList.remove("hidden");
+ atualizarTudo();
+}
+
+function atualizarCampoNumeroInicial() {
+ const inputInicial = document.getElementById('numeroInicial');
+ if (inputInicial) {
+  inputInicial.value = obterContador();
+ }
+}
+
+function alterarNumeroInicial() {
+ const inputInicial = document.getElementById('numeroInicial');
+ if (inputInicial) {
+  const val = parseInt(inputInicial.value, 10);
+  if (!isNaN(val) && val > 0) {
+   contadorInicial = val;
+   salvar();
+  }
+ }
+}
+
+function gerar(){
+ const nome=document.getElementById("nome").value;
+ const tipo=document.getElementById("tipo").value;
+
+ if(!nome){alert("Digite o nome");return;}
+
+ const numFinal = obterContador();
+ contadorInicial = numFinal + 1;
+ const senha = String(numFinal).padStart(3, '0');
+
+ fila.push({senha,nome,tipo,chamado:false});
+
+ salvar();
+ atualizarTudo();
+ atualizarCampoNumeroInicial();
+ document.getElementById("nome").value="";
+}
+
+function chamarAuto(){
+ const naoChamados = fila.filter(p => !p.chamado);
+
+ if(naoChamados.length === 0){
+   alert("Todos já foram chamados");
+   return;
+ }
+
+ naoChamados.sort((a,b)=>{
+  const prioridade={E:1,P:2,A:3};
+  return prioridade[a.tipo]-prioridade[b.tipo];
+ });
+
+ const paciente = naoChamados[0];
+ const index = fila.findIndex(p => p.senha === paciente.senha);
+
+ chamar(index);
+}
+
+function chamar(index){
+ const paciente = fila[index];
+ const guiche=document.getElementById("guiche").value;
+
+ paciente.chamado = true;
+ historico.push(paciente);
+
+ document.getElementById("senhaTv").innerText=paciente.senha;
+ document.getElementById("nomeTv").innerText=paciente.nome;
+ document.getElementById("guicheTv").innerText="Guichê "+guiche;
+
+ tocarDingDong(() => {
+  falarChamada(paciente.senha, paciente.nome, guiche);
+ });
+
+ salvar();
+ atualizarTudo();
+}
+
+function finalizar(index){
+ fila.splice(index,1);
+ salvar();
+ atualizarTudo();
+}
+
+function atualizarTudo(){
+ atualizarTabela();
+ atualizarStats();
+}
+
+function atualizarTabela(){
+ const tabela=document.getElementById("filaTabela");
+ tabela.innerHTML="";
+
+ fila.forEach((p,i)=>{
+  tabela.innerHTML+=`
+  <tr style="background:${p.chamado ? '#d4edda' : 'white'}">
+  <td>${p.senha}</td>
+  <td>${p.nome}</td>
+  <td>${p.tipo}</td>
+  <td>${p.chamado ? 'Chamado' : 'Aguardando'}</td>
+  <td>
+    <button onclick="chamar(${i})">Chamar</button>
+    <button onclick="finalizar(${i})">Finalizar</button>
+  </td>
+  </tr>`;
+ });
+}
+
+function atualizarStats(){
+ document.getElementById("statFila").innerText=fila.length;
+ document.getElementById("statChamados").innerText=historico.length;
+ document.getElementById("statEmergencia").innerText=
+  fila.filter(p=>p.tipo==="E").length;
+}
+
+atualizarTudo();
+
+</script>
+
+</body>
+</html>

@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>TV - Chamada de Pacientes</title>
+
+<script src="/socket.io/socket.io.js"></script>
+
+<style>
+
+body{
+ margin:0;
+ background:black;
+ color:#00ff00;
+ font-family:Arial, sans-serif;
+ text-align:center;
+ user-select:none;
+ overflow: hidden;
+}
+
+.container{
+ margin-top:100px;
+}
+
+h1{
+ font-size:140px;
+ margin:0;
+ text-shadow: 0 0 25px rgba(0,255,0,0.6);
+}
+
+h2{
+ font-size:65px;
+ color:#00ffff;
+ margin: 30px 0;
+ text-shadow: 0 0 20px rgba(0,255,255,0.6);
+}
+
+h3{
+ font-size:55px;
+ color: #ffffff;
+ margin: 20px 0;
+}
+
+</style>
+
+</head>
+<body>
+
+<div class="container">
+
+<h1 id="senhaTv">
+AGUARDANDO
+</h1>
+
+<h2 id="nomeTv">
+---
+</h2>
+
+<h3 id="guicheTv">
+---
+</h3>
+
+</div>
+
+<script>
+
+let audioCtx = null;
+let vozesDisponiveis = [];
+
+function carregarVozes() {
+ if (typeof window.speechSynthesis !== 'undefined') {
+  vozesDisponiveis = window.speechSynthesis.getVoices() || [];
+ }
+}
+
+if (typeof window.speechSynthesis !== 'undefined') {
+ carregarVozes();
+ window.speechSynthesis.onvoiceschanged = carregarVozes;
+}
+
+function obterOuCriarAudioContext() {
+ if (!audioCtx) {
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+ }
+ if (audioCtx.state === 'suspended') {
+  audioCtx.resume().catch(() => {});
+ }
+ if (window.speechSynthesis) {
+  window.speechSynthesis.resume();
+ }
+ return audioCtx;
+}
+
+function autoDesbloquearTV() {
+ const ctx = obterOuCriarAudioContext();
+ if (ctx && ctx.state === 'suspended') {
+  ctx.resume().catch(() => {});
+ }
+
+ try {
+  const bufferSilencioso = ctx.createBuffer(1, 1, 22050);
+  const fonte = ctx.createBufferSource();
+  fonte.buffer = bufferSilencioso;
+  fonte.connect(ctx.destination);
+  fonte.start(0);
+ } catch(e) {}
+
+ if (window.speechSynthesis) {
+  window.speechSynthesis.resume();
+ }
+}
+
+window.addEventListener('DOMContentLoaded', autoDesbloquearTV);
+window.addEventListener('load', autoDesbloquearTV);
+window.addEventListener('focus', autoDesbloquearTV);
+
+['click', 'touchstart', 'mousemove', 'keydown', 'pointerdown', 'scroll'].forEach(evt => {
+ window.addEventListener(evt, () => {
+  autoDesbloquearTV();
+  if (!audioDesbloqueado) {
+   ativarAudioManual();
+  }
+ }, { passive: true });
+});
+
+function tocarDingDong() {
+ try {
+  const ctx = obterOuCriarAudioContext();
+  const now = ctx.currentTime;
+
+  // Nota 1 (Mi5 - ~659Hz)
+  const osc1 = ctx.createOscillator();
+  const gain1 = ctx.createGain();
+  osc1.type = 'sine';
+  osc1.frequency.setValueAtTime(659.25, now);
+  gain1.gain.setValueAtTime(0.6, now);
+  gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+  osc1.connect(gain1);
+  gain1.connect(ctx.destination);
+  osc1.start(now);
+  osc1.stop(now + 0.6);
+
+  // Nota 2 (Dó5 - ~523Hz)
+  const osc2 = ctx.createOscillator();
+  const gain2 = ctx.createGain();
+  osc2.type = 'sine';
+  osc2.frequency.setValueAtTime(523.25, now + 0.3);
+  gain2.gain.setValueAtTime(0.6, now + 0.3);
+  gain2.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
+  osc2.connect(gain2);
+  gain2.connect(ctx.destination);
+  osc2.start(now + 0.3);
+  osc2.stop(now + 1.2);
+ } catch(e) {
+  console.error('Erro ao emitir bipe ding dong:', e);
+ }
+}
+
+function executarChamadaSonora(senha, nome, guiche) {
+ autoDesbloquearTV();
+
+ const texto = `Atenção. Senha ${senha}. Paciente ${nome}. Dirigir-se ao guichê ${guiche}`;
+
+ // 1. Toca o bipe Ding-Dong imediatamente
+ tocarDingDong();
+
+ // 2. Aguarda 1.1s (tempo do bipe) para iniciar a fala do nome
+ setTimeout(() => {
+  falarTexto(texto);
+ }, 1100);
+}
+
+function falarTexto(texto) {
+ const urlTts = `/api/tts?texto=${encodeURIComponent(texto)}`;
+ const audio = new Audio();
+ let fallbackAcionado = false;
+
+ const acionarFallback = (motivo) => {
+  if (fallbackAcionado) return;
+  fallbackAcionado = true;
+  console.warn('⚠️ Acionando voz nativa do navegador (WebSpeech). Motivo:', motivo);
+  sintetizarWebSpeech(texto);
+ };
+
+ // Timer de segurança (se o MP3 não carregar em 2.5s)
+ const timerSeguranca = setTimeout(() => {
+  acionarFallback('Timeout de carregamento do MP3');
+ }, 2500);
+
+ audio.onerror = () => {
+  clearTimeout(timerSeguranca);
+  acionarFallback('Falha na rota /api/tts');
+ };
+
+ audio.oncanplaythrough = () => {
+  clearTimeout(timerSeguranca);
+  audio.play().then(() => {
+   console.log('✅ Áudio MP3 da chamada reproduzido com sucesso!');
+  }).catch(err => {
+   acionarFallback('Autoplay bloqueado no HTML5 Audio: ' + err);
+  });
+ };
+
+ audio.src = urlTts;
+ audio.load();
+}
+
+function sintetizarWebSpeech(texto) {
+ if (!('speechSynthesis' in window)) {
+  console.error('SpeechSynthesis não suportado neste navegador.');
+  return;
+ }
+
+ window.speechSynthesis.resume();
+ window.speechSynthesis.cancel();
+
+ setTimeout(() => {
+  window.speechSynthesis.resume();
+
+  const msg = new SpeechSynthesisUtterance(texto);
+  msg.lang = 'pt-BR';
+  msg.rate = 0.88;
+  msg.pitch = 1.0;
+  msg.volume = 1.0;
+
+  const vozes = (window.speechSynthesis.getVoices() || []).concat(vozesDisponiveis);
+  if (vozes && vozes.length > 0) {
+   const vozPtBr = vozes.find(v => v.lang && (v.lang === 'pt-BR' || v.lang === 'pt_BR'));
+   const vozPt = vozes.find(v => v.lang && v.lang.toLowerCase().includes('pt'));
+   if (vozPtBr) {
+    msg.voice = vozPtBr;
+   } else if (vozPt) {
+    msg.voice = vozPt;
+   }
+  }
+
+  msg.onstart = () => {
+   console.log('🔊 WebSpeech iniciado para:', texto);
+  };
+
+  msg.onerror = (e) => {
+   console.error('Erro no WebSpeech:', e);
+  };
+
+  window.speechSynthesis.speak(msg);
+
+  const keepAlive = setInterval(() => {
+   if (window.speechSynthesis.speaking) {
+    window.speechSynthesis.resume();
+   } else {
+    clearInterval(keepAlive);
+   }
+  }, 500);
+
+ }, 60);
+}
+
+let socket = null;
+let ultimaChamadaChave = null;
+let usandoPolling = false;
+
+function atualizarTelaEAudio(dados) {
+ const chaveAtual = `${dados.id || ''}_${dados.senha}_${dados.guiche}`;
+ document.getElementById('senhaTv').innerText = dados.senha;
+ document.getElementById('nomeTv').innerText = dados.nome;
+ document.getElementById('guicheTv').innerText = 'Guichê ' + dados.guiche;
+
+ if (ultimaChamadaChave !== chaveAtual) {
+  ultimaChamadaChave = chaveAtual;
+  autoDesbloquearTV();
+  executarChamadaSonora(dados.senha, dados.nome, dados.guiche);
+ }
+}
+
+async function checarFilaREST() {
+ try {
+  const res = await fetch('/api/pacientes');
+  if (res.ok) {
+   const fila = await res.json();
+   const pacienteChamado = fila.find(p => p.chamado === true);
+   if (pacienteChamado) {
+    atualizarTelaEAudio(pacienteChamado);
+   }
+  }
+ } catch(err) {
+  console.warn('Erro ao consultar fila por REST:', err);
+ }
+}
+
+function iniciarPollingREST() {
+ if (usandoPolling) return;
+ usandoPolling = true;
+ console.log('🔄 Modo Polling REST ativado para TV (Vercel Serverless)');
+ checarFilaREST();
+ setInterval(checarFilaREST, 2000);
+}
+
+if (typeof io !== 'undefined') {
+ try {
+  socket = io({ timeout: 3000, reconnectionAttempts: 3 });
+  
+  socket.on('connect', () => {
+   console.log('⚡ Conectado ao WebSocket local!');
+   autoDesbloquearTV();
+  });
+
+  socket.on('connect_error', () => {
+   iniciarPollingREST();
+  });
+
+  socket.on('novaChamada', (dados) => {
+   atualizarTelaEAudio(dados);
+  });
+ } catch(e) {
+  iniciarPollingREST();
+ }
+} else {
+ iniciarPollingREST();
+}
+
+// Fallback de garantia: se após 2.5s o socket não conectou, ativa o Polling
+setTimeout(() => {
+ if (!socket || !socket.connected) {
+  iniciarPollingREST();
+ }
+}, 2500);
+
+</script>
+
+</body>
+</html>

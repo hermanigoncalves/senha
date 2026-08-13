@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Recepção</title>
+
+<script src="/socket.io/socket.io.js"></script>
+
+<style>
+body{
+ font-family:Arial;
+ background:#f4f6f9;
+ padding:30px;
+}
+
+.card{
+ background:white;
+ padding:20px;
+ border-radius:10px;
+ max-width:500px;
+ margin:auto;
+ box-shadow:0 4px 10px rgba(0,0,0,.1);
+}
+
+input,select,button{
+ width:100%;
+ padding:12px;
+ margin-top:10px;
+}
+
+button{
+ background:#0b7a33;
+ color:white;
+ border:none;
+}
+</style>
+
+</head>
+<body>
+
+<div class="card">
+
+<h1>Recepção</h1>
+
+<div style="margin-bottom: 15px; padding: 10px; background: #eef7f1; border: 1px solid #c8e6c9; border-radius: 6px;">
+<label for="numeroInicial" style="font-size: 14px; font-weight: bold; color: #0b7a33; display: block; margin-bottom: 5px;">Número Inicial da Senha:</label>
+<input type="number" id="numeroInicial" value="1" min="1" onchange="alterarNumeroInicial()" oninput="alterarNumeroInicial()">
+</div>
+
+<input type="text" id="nome" placeholder="Nome do paciente">
+
+<select id="tipo" onchange="atualizarCampoNumeroInicial()">
+<option value="A">Normal</option>
+<option value="P">Prioritário</option>
+<option value="E">Emergência</option>
+</select>
+
+<button onclick="gerarSenha()">
+Gerar Senha
+</button>
+
+</div>
+
+<script>
+
+var contadorInicial = parseInt(localStorage.getItem('cmip_contador')) || 1;
+
+function obterContador() {
+ if (typeof contadorInicial === 'undefined' || isNaN(contadorInicial)) {
+  contadorInicial = parseInt(localStorage.getItem('cmip_contador')) || 1;
+ }
+ return contadorInicial;
+}
+
+function salvarContador(val) {
+ contadorInicial = val;
+ localStorage.setItem('cmip_contador', val);
+}
+
+function atualizarCampoNumeroInicial() {
+ const inputInicial = document.getElementById('numeroInicial');
+ if (inputInicial) {
+  inputInicial.value = obterContador();
+ }
+}
+
+function alterarNumeroInicial() {
+ const inputInicial = document.getElementById('numeroInicial');
+ if (inputInicial) {
+  const val = parseInt(inputInicial.value, 10);
+  if (!isNaN(val) && val > 0) {
+   salvarContador(val);
+  }
+ }
+}
+
+function atualizarContadoresComFila(listaFila) {
+ if (!listaFila || !Array.isArray(listaFila)) return;
+ let maxNum = obterContador();
+ listaFila.forEach(p => {
+  if (p.senha) {
+   const match = p.senha.match(/\d+/);
+   if (match) {
+    const num = parseInt(match[0], 10);
+    if (!isNaN(num) && num >= maxNum) {
+     maxNum = num + 1;
+    }
+   }
+  }
+ });
+ salvarContador(maxNum);
+ atualizarCampoNumeroInicial();
+}
+
+let socket = null;
+let usandoPolling = false;
+
+async function carregarFilaREST() {
+ try {
+  const res = await fetch('/api/pacientes');
+  if (res.ok) {
+   const fila = await res.json();
+   atualizarContadoresComFila(fila);
+  }
+ } catch(err) {
+  console.warn('Erro ao carregar fila por REST:', err);
+ }
+}
+
+function iniciarPolling() {
+ if (usandoPolling) return;
+ usandoPolling = true;
+ carregarFilaREST();
+ setInterval(carregarFilaREST, 3000);
+}
+
+if (typeof io !== 'undefined') {
+ try {
+  socket = io({ timeout: 3000, reconnectionAttempts: 3 });
+
+  socket.on('filaAtualizada', (novaFila) => {
+   atualizarContadoresComFila(novaFila);
+  });
+
+  socket.on('connect_error', () => {
+   iniciarPolling();
+  });
+ } catch(e) {
+  iniciarPolling();
+ }
+} else {
+ iniciarPolling();
+}
+
+setTimeout(() => {
+ if (!socket || !socket.connected) {
+  iniciarPolling();
+ }
+}, 2500);
+
+async function gerarSenha() {
+ const nome = document.getElementById('nome').value;
+ const tipo = document.getElementById('tipo').value;
+
+ if (!nome) {
+  alert('Digite o nome');
+  return;
+ }
+
+ const numFinal = obterContador();
+ salvarContador(numFinal + 1);
+ atualizarCampoNumeroInicial();
+
+ const senha = String(numFinal).padStart(3, '0');
+
+ if (socket && socket.connected) {
+  socket.emit('gerarSenha', { senha, nome, tipo });
+ }
+
+ try {
+  const res = await fetch('/api/pacientes/gerar', {
+   method: 'POST',
+   headers: { 'Content-Type': 'application/json' },
+   body: JSON.stringify({ senha, nome, tipo })
+  });
+
+  if (res.ok) {
+   alert('Senha gerada com sucesso: ' + senha);
+  } else {
+   const data = await res.json();
+   alert('Aviso ao gerar senha: ' + (data.error || 'Erro desconhecido'));
+  }
+ } catch(err) {
+  alert('Senha gerada localmente: ' + senha);
+ }
+
+ document.getElementById('nome').value = '';
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+ atualizarCampoNumeroInicial();
+ carregarFilaREST();
+});
+
+</script>
+
+</body>
+</html>

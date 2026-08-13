@@ -32,6 +32,41 @@ function salvarPacientesNoArquivo(pacientes) {
  }
 }
 
+// Apaga registros de dias anteriores automaticamente (limpeza diária)
+async function limparPacientesAntigos() {
+ const hojeDataStr = new Date().toISOString().substring(0, 10);
+
+ if (dbConectado && pool) {
+  try {
+   await pool.query("DELETE FROM pacientes WHERE DATE(criado_em) < CURRENT_DATE");
+  } catch (err) {
+   console.error('Aviso ao limpar banco PostgreSQL de dias anteriores:', err.message);
+  }
+ }
+
+ const lista = carregarPacientesDoArquivo();
+ const listaFiltradaHoje = lista.filter(p => {
+  if (!p.criado_em) return true;
+  return p.criado_em.substring(0, 10) === hojeDataStr;
+ });
+
+ if (listaFiltradaHoje.length !== lista.length) {
+  salvarPacientesNoArquivo(listaFiltradaHoje);
+ }
+}
+
+// Apaga todos os registros do banco de dados (reinício de fila)
+async function limparTodoOBanco() {
+ if (dbConectado && pool) {
+  try {
+   await pool.query("TRUNCATE TABLE pacientes RESTART IDENTITY");
+  } catch (err) {
+   console.error('Aviso ao truncar tabela de pacientes:', err.message);
+  }
+ }
+ salvarPacientesNoArquivo([]);
+}
+
 let Pool = null;
 let pool = null;
 let dbConectado = false;
@@ -65,6 +100,7 @@ async function inicializarBanco() {
  if (!pool) {
   dbConectado = false;
   console.log('📁 Modo de Armazenamento Local/Em Memória ATIVO!');
+  limparPacientesAntigos();
   return;
  }
  try {
@@ -84,9 +120,11 @@ async function inicializarBanco() {
   client.release();
   dbConectado = true;
   console.log('✅ Banco PostgreSQL conectado com sucesso!');
+  await limparPacientesAntigos();
  } catch (err) {
   dbConectado = false;
   console.log('📁 Banco PostgreSQL indisponível (' + err.message + '). Modo de Armazenamento Local/Em Memória ATIVO!');
+  limparPacientesAntigos();
  }
 }
 
@@ -97,5 +135,7 @@ module.exports = {
  isConectado: () => dbConectado,
  carregarPacientesDoArquivo,
  salvarPacientesNoArquivo,
+ limparPacientesAntigos,
+ limparTodoOBanco,
  inicializarBanco
 };

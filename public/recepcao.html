@@ -59,6 +59,10 @@ button{
 Gerar Senha
 </button>
 
+<button onclick="limparBancoDados()" style="background: #c62828; margin-top: 10px;">
+🗑️ Limpar Banco de Dados / Zerar Fila
+</button>
+
 </div>
 
 <script>
@@ -195,6 +199,19 @@ async function gerarSenha() {
  }
 
  document.getElementById('nome').value = '';
+}
+
+async function limparBancoDados() {
+ if (!confirm('Deseja realmente apagar TODOS os dados do banco e zerar a fila do dia?')) return;
+ try {
+  await fetch('/api/pacientes/limpar', { method: 'POST' });
+  salvarContador(1);
+  atualizarCampoNumeroInicial();
+  alert('Banco de dados limpo com sucesso!');
+  carregarFilaREST();
+ } catch(err) {
+  alert('Erro ao limpar banco de dados: ' + err.message);
+ }
 }
 
 window.addEventListener('DOMContentLoaded', () => {

@@ -25,6 +25,7 @@ function tocarAudioHardwareServidor(texto) {
 
 // Obter fila de pacientes ativa
 async function obterFilaAtiva() {
+ await db.limparPacientesAntigos();
  if (db.isConectado()) {
   try {
    const res = await db.pool.query(
@@ -238,6 +239,21 @@ app.post('/api/pacientes/finalizar', async (req, res) => {
  }
 
  res.status(404).json({ error: 'Paciente não encontrado' });
+});
+
+// 5. Limpar Banco de Dados (Endpoint REST)
+app.post('/api/pacientes/limpar', async (req, res) => {
+ await db.limparTodoOBanco();
+ const filaAtualizada = await obterFilaAtiva();
+ io.emit('filaAtualizada', filaAtualizada);
+ res.json({ success: true, message: 'Banco de dados limpo com sucesso' });
+});
+
+app.delete('/api/pacientes', async (req, res) => {
+ await db.limparTodoOBanco();
+ const filaAtualizada = await obterFilaAtiva();
+ io.emit('filaAtualizada', filaAtualizada);
+ res.json({ success: true, message: 'Banco de dados limpo com sucesso' });
 });
 
 // WebSocket Event Handling

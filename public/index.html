@@ -368,10 +368,11 @@ let ultimaChamadaChave = null;
 let usandoPolling = false;
 
 function atualizarTelaEAudio(dados) {
- const chaveAtual = `${dados.id || ''}_${dados.senha}_${dados.guiche}`;
+ if (!dados || !dados.senha) return;
+ const chaveAtual = `${dados.id || ''}_${dados.senha}_${dados.guiche}_${dados.timestamp || dados.chamado_em || ''}`;
  document.getElementById('senhaTv').innerText = dados.senha;
- document.getElementById('nomeTv').innerText = dados.nome;
- document.getElementById('guicheTv').innerText = 'Guichê ' + dados.guiche;
+ document.getElementById('nomeTv').innerText = dados.nome || '---';
+ document.getElementById('guicheTv').innerText = 'Guichê ' + (dados.guiche || '1');
 
  if (ultimaChamadaChave !== chaveAtual) {
   ultimaChamadaChave = chaveAtual;
@@ -382,16 +383,19 @@ function atualizarTelaEAudio(dados) {
 
 async function carregarFilaREST() {
  try {
+  const resUltima = await fetch('/api/pacientes/ultima-chamada');
+  if (resUltima.ok) {
+   const pacienteChamado = await resUltima.json();
+   if (pacienteChamado && pacienteChamado.senha) {
+    atualizarTelaEAudio(pacienteChamado);
+   }
+  }
+
   const res = await fetch('/api/pacientes');
   if (res.ok) {
    fila = await res.json();
    atualizarContadoresComFila(fila);
    atualizarTabela();
-
-   const pacienteChamado = fila.find(p => p.chamado === true);
-   if (pacienteChamado) {
-    atualizarTelaEAudio(pacienteChamado);
-   }
   }
  } catch(err) {
   console.warn('Erro ao carregar fila via REST:', err);

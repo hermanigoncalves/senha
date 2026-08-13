@@ -29,7 +29,7 @@ async function obterFilaAtiva() {
  if (db.isConectado()) {
   try {
    const res = await db.pool.query(
-    "SELECT id, senha, nome, tipo, status, guiche FROM pacientes WHERE status != 'FINALIZADO' ORDER BY id ASC"
+    "SELECT id, senha, nome, tipo, status, guiche, chamado_em FROM pacientes WHERE status != 'FINALIZADO' ORDER BY id ASC"
    );
    return res.rows.map(r => ({
     id: r.id,
@@ -37,7 +37,8 @@ async function obterFilaAtiva() {
     nome: r.nome,
     tipo: r.tipo,
     chamado: r.status === 'CHAMADO',
-    guiche: r.guiche
+    guiche: r.guiche,
+    chamado_em: r.chamado_em ? new Date(r.chamado_em).getTime() : null
    }));
   } catch (err) {
    console.error('Erro ao consultar PostgreSQL:', err);
@@ -51,9 +52,12 @@ async function obterFilaAtiva() {
   nome: r.nome,
   tipo: r.tipo,
   chamado: r.status === 'CHAMADO',
-  guiche: r.guiche
+  guiche: r.guiche,
+  chamado_em: r.chamado_em ? new Date(r.chamado_em).getTime() : null
  }));
 }
+
+let ultimaChamadaServidor = null;
 
 // Rota de proxy para síntese de voz (TTS) em Português sem problemas de CORS
 app.get('/api/tts', (req, res) => {
@@ -113,6 +117,7 @@ app.get('/api/tts', (req, res) => {
 
 // 1. Obter Pacientes
 app.get('/api/pacientes', async (req, res) => {
+ res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
  const fila = await obterFilaAtiva();
  res.json(fila);
 });
@@ -178,13 +183,15 @@ app.post('/api/pacientes/chamar', async (req, res) => {
   if (alvo) {
    alvo.status = 'CHAMADO';
    alvo.guiche = guiche || '1';
+   alvo.chamado_em = new Date().toISOString();
    db.salvarPacientesNoArquivo(lista);
-   paciente = { id: alvo.id, senha: alvo.senha, nome: alvo.nome, tipo: alvo.tipo, chamado: true, guiche: alvo.guiche };
+   paciente = { id: alvo.id, senha: alvo.senha, nome: alvo.nome, tipo: alvo.tipo, chamado: true, guiche: alvo.guiche, chamado_em: alvo.chamado_em };
   }
  }
 
  if (paciente) {
-  const dadosChamada = { ...paciente, guiche: guiche || '1' };
+  const dadosChamada = { ...paciente, guiche: guiche || '1', timestamp: Date.now() };
+  ultimaChamadaServidor = dadosChamada;
   
   io.emit('novaChamada', dadosChamada);
   
@@ -198,6 +205,21 @@ app.post('/api/pacientes/chamar', async (req, res) => {
  }
 
  res.status(404).json({ error: 'Paciente não encontrado' });
+});
+
+// 3.5. Obter Última Chamada (Endpoint REST para TV / Polling Vercel)
+app.get('/api/pacientes/ultima-chamada', async (req, res) => {
+ res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+ if (ultimaChamadaServidor) {
+  return res.json(ultimaChamadaServidor);
+ }
+ const fila = await obterFilaAtiva();
+ const chamados = fila.filter(p => p.chamado === true);
+ if (chamados.length > 0) {
+  chamados.sort((a, b) => (b.chamado_em || b.id || 0) - (a.chamado_em || a.id || 0));
+  return res.json(chamados[0]);
+ }
+ res.json(null);
 });
 
 // 4. Finalizar Paciente (Endpoint REST)
@@ -243,6 +265,7 @@ app.post('/api/pacientes/finalizar', async (req, res) => {
 
 // 5. Limpar Banco de Dados (Endpoint REST)
 app.post('/api/pacientes/limpar', async (req, res) => {
+ ultimaChamadaServidor = null;
  await db.limparTodoOBanco();
  const filaAtualizada = await obterFilaAtiva();
  io.emit('filaAtualizada', filaAtualizada);
@@ -250,6 +273,7 @@ app.post('/api/pacientes/limpar', async (req, res) => {
 });
 
 app.delete('/api/pacientes', async (req, res) => {
+ ultimaChamadaServidor = null;
  await db.limparTodoOBanco();
  const filaAtualizada = await obterFilaAtiva();
  io.emit('filaAtualizada', filaAtualizada);
@@ -308,12 +332,14 @@ io.on('connection', async (socket) => {
     if (alvo) {
      alvo.status = 'CHAMADO';
      alvo.guiche = dados.guiche;
+     alvo.chamado_em = new Date().toISOString();
      db.salvarPacientesNoArquivo(lista);
     }
    }
 
-   const dadosChamada = { ...paciente, guiche: dados.guiche };
-   io.emit('novaChamada', dadosChamada);
+    const dadosChamada = { ...paciente, guiche: dados.guiche, timestamp: Date.now() };
+    ultimaChamadaServidor = dadosChamada;
+    io.emit('novaChamada', dadosChamada);
 
    const filaAtualizada = await obterFilaAtiva();
    io.emit('filaAtualizada', filaAtualizada);

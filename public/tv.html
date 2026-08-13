@@ -2,43 +2,131 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TV - Chamada de Pacientes</title>
 
 <script src="/socket.io/socket.io.js"></script>
 
 <style>
 
-body{
- margin:0;
- background:black;
- color:#00ff00;
- font-family:Arial, sans-serif;
- text-align:center;
- user-select:none;
+* {
+ box-sizing: border-box;
+}
+
+body {
+ margin: 0;
+ background: #030712;
+ color: #00ff66;
+ font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+ text-align: center;
+ user-select: none;
  overflow: hidden;
+ height: 100vh;
+ display: flex;
+ flex-direction: column;
+ justify-content: center;
+ align-items: center;
+ position: relative;
 }
 
-.container{
- margin-top:100px;
+.header-status {
+ position: fixed;
+ top: 15px;
+ right: 20px;
+ display: flex;
+ align-items: center;
+ gap: 8px;
+ font-size: 14px;
+ color: #6b7280;
+ font-weight: 500;
+ letter-spacing: 1px;
+ text-transform: uppercase;
+ opacity: 0.7;
 }
 
-h1{
- font-size:140px;
- margin:0;
- text-shadow: 0 0 25px rgba(0,255,0,0.6);
+.status-dot {
+ width: 10px;
+ height: 10px;
+ background: #10b981;
+ border-radius: 50%;
+ box-shadow: 0 0 10px #10b981;
+ animation: pulseDot 2s infinite;
 }
 
-h2{
- font-size:65px;
- color:#00ffff;
- margin: 30px 0;
- text-shadow: 0 0 20px rgba(0,255,255,0.6);
+@keyframes pulseDot {
+ 0%, 100% { opacity: 1; transform: scale(1); }
+ 50% { opacity: 0.4; transform: scale(0.85); }
 }
 
-h3{
- font-size:55px;
+.container {
+ width: 92%;
+ max-width: 1280px;
+ padding: 50px 40px;
+ border-radius: 28px;
+ background: rgba(15, 23, 42, 0.85);
+ border: 2px solid rgba(0, 255, 102, 0.25);
+ box-shadow: 0 0 70px rgba(0, 0, 0, 0.9), inset 0 0 30px rgba(0, 255, 102, 0.05);
+ transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+ backdrop-filter: blur(10px);
+}
+
+/* Efeito visual ao chamar paciente */
+.container.chamada-animada {
+ animation: flashGlow 1.2s ease-in-out 3;
+}
+
+@keyframes flashGlow {
+ 0% {
+  border-color: rgba(0, 255, 102, 0.25);
+  box-shadow: 0 0 70px rgba(0, 0, 0, 0.9);
+  transform: scale(1);
+ }
+ 50% {
+  border-color: #00ffff;
+  box-shadow: 0 0 120px rgba(0, 255, 255, 0.95);
+  transform: scale(1.02);
+ }
+ 100% {
+  border-color: rgba(0, 255, 102, 0.25);
+  box-shadow: 0 0 70px rgba(0, 0, 0, 0.9);
+  transform: scale(1);
+ }
+}
+
+.label-titulo {
+ font-size: 26px;
+ text-transform: uppercase;
+ letter-spacing: 4px;
+ color: #9ca3af;
+ margin-bottom: 10px;
+ font-weight: 600;
+}
+
+h1 {
+ font-size: 140px;
+ margin: 0;
+ color: #00ff66;
+ text-shadow: 0 0 35px rgba(0, 255, 102, 0.7);
+ letter-spacing: 4px;
+ font-weight: 900;
+ line-height: 1.1;
+}
+
+h2 {
+ font-size: 68px;
+ color: #00ffff;
+ margin: 25px 0 15px 0;
+ text-shadow: 0 0 25px rgba(0, 255, 255, 0.7);
+ font-weight: 700;
+ word-break: break-word;
+}
+
+h3 {
+ font-size: 58px;
  color: #ffffff;
- margin: 20px 0;
+ margin: 15px 0 0 0;
+ text-shadow: 0 0 18px rgba(255, 255, 255, 0.6);
+ font-weight: 600;
 }
 
 </style>
@@ -46,7 +134,14 @@ h3{
 </head>
 <body>
 
-<div class="container">
+<div class="header-status">
+ <div class="status-dot" id="statusDot"></div>
+ <span id="statusTexto">TV Conectada</span>
+</div>
+
+<div class="container" id="painelTv">
+
+<div class="label-titulo">SENHA</div>
 
 <h1 id="senhaTv">
 AGUARDANDO
@@ -110,22 +205,22 @@ function autoDesbloquearTV() {
  }
 }
 
+// Desbloqueio automático contínuo sem requerer clique manual
 window.addEventListener('DOMContentLoaded', autoDesbloquearTV);
 window.addEventListener('load', autoDesbloquearTV);
 window.addEventListener('focus', autoDesbloquearTV);
 
 ['click', 'touchstart', 'mousemove', 'keydown', 'pointerdown', 'scroll'].forEach(evt => {
- window.addEventListener(evt, () => {
-  autoDesbloquearTV();
-  if (!audioDesbloqueado) {
-   ativarAudioManual();
-  }
- }, { passive: true });
+ window.addEventListener(evt, autoDesbloquearTV, { passive: true });
 });
 
 function tocarDingDong() {
  try {
   const ctx = obterOuCriarAudioContext();
+  if (!ctx) return;
+  if (ctx.state === 'suspended') {
+   ctx.resume().catch(() => {});
+  }
   const now = ctx.currentTime;
 
   // Nota 1 (Mi5 - ~659Hz)
@@ -133,7 +228,7 @@ function tocarDingDong() {
   const gain1 = ctx.createGain();
   osc1.type = 'sine';
   osc1.frequency.setValueAtTime(659.25, now);
-  gain1.gain.setValueAtTime(0.6, now);
+  gain1.gain.setValueAtTime(0.7, now);
   gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
   osc1.connect(gain1);
   gain1.connect(ctx.destination);
@@ -144,12 +239,12 @@ function tocarDingDong() {
   const osc2 = ctx.createOscillator();
   const gain2 = ctx.createGain();
   osc2.type = 'sine';
-  osc2.frequency.setValueAtTime(523.25, now + 0.3);
-  gain2.gain.setValueAtTime(0.6, now + 0.3);
+  osc2.frequency.setValueAtTime(523.25, now + 0.35);
+  gain2.gain.setValueAtTime(0.7, now + 0.35);
   gain2.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
   osc2.connect(gain2);
   gain2.connect(ctx.destination);
-  osc2.start(now + 0.3);
+  osc2.start(now + 0.35);
   osc2.stop(now + 1.2);
  } catch(e) {
   console.error('Erro ao emitir bipe ding dong:', e);
@@ -182,7 +277,6 @@ function falarTexto(texto) {
   sintetizarWebSpeech(texto);
  };
 
- // Timer de segurança (se o MP3 não carregar em 2.5s)
  const timerSeguranca = setTimeout(() => {
   acionarFallback('Timeout de carregamento do MP3');
  }, 2500);
@@ -223,9 +317,13 @@ function sintetizarWebSpeech(texto) {
   msg.pitch = 1.0;
   msg.volume = 1.0;
 
-  const vozes = (window.speechSynthesis.getVoices() || []).concat(vozesDisponiveis);
+  let vozes = window.speechSynthesis.getVoices() || [];
+  if (!vozes.length && vozesDisponiveis.length) {
+   vozes = vozesDisponiveis;
+  }
+
   if (vozes && vozes.length > 0) {
-   const vozPtBr = vozes.find(v => v.lang && (v.lang === 'pt-BR' || v.lang === 'pt_BR'));
+   const vozPtBr = vozes.find(v => v.lang && (v.lang === 'pt-BR' || v.lang === 'pt_BR' || v.lang.toLowerCase().includes('br')));
    const vozPt = vozes.find(v => v.lang && v.lang.toLowerCase().includes('pt'));
    if (vozPtBr) {
     msg.voice = vozPtBr;
@@ -252,7 +350,7 @@ function sintetizarWebSpeech(texto) {
    }
   }, 500);
 
- }, 60);
+ }, 100);
 }
 
 let socket = null;
@@ -260,10 +358,20 @@ let ultimaChamadaChave = null;
 let usandoPolling = false;
 
 function atualizarTelaEAudio(dados) {
- const chaveAtual = `${dados.id || ''}_${dados.senha}_${dados.guiche}`;
+ if (!dados || !dados.senha) return;
+
+ const chaveAtual = `${dados.id || ''}_${dados.senha}_${dados.guiche}_${dados.timestamp || dados.chamado_em || ''}`;
+ 
  document.getElementById('senhaTv').innerText = dados.senha;
- document.getElementById('nomeTv').innerText = dados.nome;
- document.getElementById('guicheTv').innerText = 'Guichê ' + dados.guiche;
+ document.getElementById('nomeTv').innerText = dados.nome || '---';
+ document.getElementById('guicheTv').innerText = 'Guichê ' + (dados.guiche || '1');
+
+ const painel = document.getElementById('painelTv');
+ if (painel) {
+  painel.classList.remove('chamada-animada');
+  void painel.offsetWidth;
+  painel.classList.add('chamada-animada');
+ }
 
  if (ultimaChamadaChave !== chaveAtual) {
   ultimaChamadaChave = chaveAtual;
@@ -273,13 +381,26 @@ function atualizarTelaEAudio(dados) {
 }
 
 async function checarFilaREST() {
+ autoDesbloquearTV();
  try {
-  const res = await fetch('/api/pacientes');
+  // 1. Tenta obter a última chamada ativa no servidor (sem cache)
+  const resUltima = await fetch('/api/pacientes/ultima-chamada?t=' + Date.now(), { cache: 'no-store' });
+  if (resUltima.ok) {
+   const pacienteChamado = await resUltima.json();
+   if (pacienteChamado && pacienteChamado.senha) {
+    atualizarTelaEAudio(pacienteChamado);
+    return;
+   }
+  }
+
+  // 2. Fallback: consulta lista de pacientes (sem cache)
+  const res = await fetch('/api/pacientes?t=' + Date.now(), { cache: 'no-store' });
   if (res.ok) {
    const fila = await res.json();
-   const pacienteChamado = fila.find(p => p.chamado === true);
-   if (pacienteChamado) {
-    atualizarTelaEAudio(pacienteChamado);
+   const chamados = fila.filter(p => p.chamado === true);
+   if (chamados.length > 0) {
+    chamados.sort((a, b) => (b.chamado_em || b.id || 0) - (a.chamado_em || a.id || 0));
+    atualizarTelaEAudio(chamados[0]);
    }
   }
  } catch(err) {
@@ -290,9 +411,10 @@ async function checarFilaREST() {
 function iniciarPollingREST() {
  if (usandoPolling) return;
  usandoPolling = true;
- console.log('🔄 Modo Polling REST ativado para TV (Vercel Serverless)');
+ const statusTexto = document.getElementById('statusTexto');
+ if (statusTexto) statusTexto.innerText = 'TV Conectada (Polling Realtime)';
  checarFilaREST();
- setInterval(checarFilaREST, 2000);
+ setInterval(checarFilaREST, 1200);
 }
 
 if (typeof io !== 'undefined') {
@@ -300,8 +422,10 @@ if (typeof io !== 'undefined') {
   socket = io({ timeout: 3000, reconnectionAttempts: 3 });
   
   socket.on('connect', () => {
-   console.log('⚡ Conectado ao WebSocket local!');
+   const statusTexto = document.getElementById('statusTexto');
+   if (statusTexto) statusTexto.innerText = 'TV Conectada (WebSocket)';
    autoDesbloquearTV();
+   checarFilaREST();
   });
 
   socket.on('connect_error', () => {
@@ -318,7 +442,7 @@ if (typeof io !== 'undefined') {
  iniciarPollingREST();
 }
 
-// Fallback de garantia: se após 2.5s o socket não conectou, ativa o Polling
+// Fallback de garantia: ativa Polling em 2.5s se socket não conectou
 setTimeout(() => {
  if (!socket || !socket.connected) {
   iniciarPollingREST();
